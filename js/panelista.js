@@ -328,8 +328,7 @@
       } else if (m.accion === 'mensaje' && m.texto) {
         S.aviso('Producción: ' + m.texto, 'mensaje', 12000);
       } else if (m.accion === 'salir') {
-        saliendo = true;
-        room.disconnect();
+        salirDeLaSala();
         error('Saliste de la sala', 'La producción terminó tu participación. ¡Gracias!');
       }
     });
@@ -346,6 +345,7 @@
     room.on(E.Reconnected, actualizarEstado);
 
     room.on(E.Disconnected, function (motivo) {
+      apagarCamaraYMicro();
       soltarPantallaEncendida();
       if (saliendo) return;
       if (motivo === LK.DisconnectReason.PARTICIPANT_REMOVED) {
@@ -363,7 +363,7 @@
   /* ---------------- Estado: ¿estoy al aire? ---------------- */
 
   function actualizarEstado() {
-    if (!room) return;
+    if (!room || saliendo || room.state === 'disconnected') return;
     const estado = S.estadoDeSala(room);
     const enVivo = estado ? estado.enVivo : [];
     const camAire = enVivo.indexOf(miIdentidad + ':cam') >= 0;
@@ -386,7 +386,7 @@
   const tiles = new Map(); // clave -> { el, video, pista }
 
   function dibujarRejilla() {
-    if (!room) return;
+    if (!room || saliendo) return;
     const rejilla = $('rejilla');
     const estado = S.estadoDeSala(room);
     const enVivo = estado ? estado.enVivo : [];
@@ -489,7 +489,7 @@
   if (!puedeCompartir) $('btnPantalla').classList.add('oculto');
 
   function pintarControles() {
-    if (!room) return;
+    if (!room || saliendo) return;
     const lp = room.localParticipant;
     const mic = lp.isMicrophoneEnabled, cam = lp.isCameraEnabled, pan = lp.isScreenShareEnabled;
     pintarBoton($('btnMic'), mic ? 'mic' : 'micOff', mic ? 'Micrófono' : 'Silenciado', !mic);
@@ -524,11 +524,32 @@
 
   $('btnSalir').addEventListener('click', function () {
     if (!confirm('¿Seguro que quieres salir de la sala?')) return;
-    saliendo = true;
-    room.disconnect();
+    salirDeLaSala();
     error('Saliste de la sala', 'Puedes volver a entrar con el mismo enlace mientras siga vigente.', true);
     $('btnReintentar').textContent = 'Volver a entrar';
   });
+
+  /** Apaga cámara, micrófono y pantalla compartida para que el celular las libere. */
+  function apagarCamaraYMicro() {
+    if (room) {
+      room.localParticipant.trackPublications.forEach(function (pub) {
+        try { if (pub.track) pub.track.stop(); } catch (e) { /* nada */ }
+      });
+    }
+    [pistaVideo, pistaAudio].forEach(function (p) {
+      try { if (p) p.stop(); } catch (e) { /* nada */ }
+    });
+    pistaVideo = null; pistaAudio = null;
+    detenerMedidor();
+  }
+
+  /** Sale de la sala y suelta todo: ya no queda nada conectado ni usando la cámara. */
+  function salirDeLaSala() {
+    saliendo = true;
+    apagarCamaraYMicro();
+    try { if (room) room.disconnect(true); } catch (e) { /* nada */ }
+    soltarPantallaEncendida();
+  }
 
   /* ---------------- Mantener la pantalla encendida (celulares) ---------------- */
 
