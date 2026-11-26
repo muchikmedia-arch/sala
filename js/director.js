@@ -1,6 +1,7 @@
 /*
  * Sala Muchik - panel del director
- * Crea los enlaces, decide quién sale al aire y controla los gráficos.
+ * Abre la sala, crea los enlaces, decide quién sale al aire, controla los
+ * gráficos y termina el evento.
  */
 (function () {
   'use strict';
@@ -12,9 +13,14 @@
   const CLAVE_EVENTO = 'sala.evento';
   const CLAVE_ESTADO = 'sala.estado';
   const CLAVE_RETORNO = 'sala.retorno';
+  const YO = S.ID_DIRECTOR + ':cam';
+
+  const PLANTILLA = '{nombre}, te recordamos que {cuando} estás invitado al «{evento}». ' +
+    'Ingresa 5 minutos antes en el siguiente enlace:\n{enlace}\n\n' +
+    'Usa audífonos y busca un lugar con buena luz. ¡Gracias!';
 
   $('nombreApp').textContent = S.CFG.nombrePlataforma;
-  $('credito').textContent = 'Desarrollado por ' + S.CFG.credito;
+  $('credito').textContent = S.textoCredito();
   document.title = 'Panel del director - ' + S.CFG.nombrePlataforma;
   [['icoLlave', 'llave'], ['icoSala', 'aire'], ['icoInvitados', 'enviar'], ['icoObs', 'obs'], ['icoAire', 'pantalla'],
     ['icoPersonas', 'personas'], ['icoRetorno', 'audifonos'], ['icoCintillo', 'cintillo'], ['icoMarca', 'estrella']]
@@ -32,13 +38,15 @@
   }
 
   let cred = S.leerLocal(CLAVE_CRED, { apiKey: '', apiSecret: '' });
-  let evento = Object.assign({ sala: salaPorDefecto(), invitados: [], obs: '' }, S.leerLocal(CLAVE_EVENTO, {}));
+  let evento = Object.assign({ sala: salaPorDefecto(), fecha: 0, antes: 30, plantilla: PLANTILLA, acortar: true, invitados: [], obs: '' },
+    S.leerLocal(CLAVE_EVENTO, {}));
   let estado = S.normalizarEstado(S.leerLocal(CLAVE_ESTADO, null));
   let retorno = Object.assign({ escuchar: true }, S.leerLocal(CLAVE_RETORNO, {}));
   let room = null;
 
   function hayClaves() { return !!(cred.apiKey && cred.apiSecret); }
   function guardarEvento() { S.guardarLocal(CLAVE_EVENTO, evento); }
+  function conectado() { return !!(room && room.state === 'connected'); }
 
   /* ------------------------------------------------------------ */
   /* Vista previa                                                  */
@@ -53,10 +61,11 @@
 
   let enviando = Promise.resolve();
   function enviarEstado() {
-    if (!room || room.state !== 'connected') return;
+    if (!conectado()) return;
     const texto = JSON.stringify(estado);
+    const r = room;
     enviando = enviando.then(function () {
-      return room.localParticipant.setAttributes({ estado: texto });
+      return r.localParticipant.setAttributes({ estado: texto });
     }).catch(function (e) {
       console.warn('No se pudo enviar el estado', e);
       S.aviso('No se pudo actualizar el programa. Revisa la conexión.', 'error');
@@ -69,6 +78,13 @@
     S.guardarLocal(CLAVE_ESTADO, estado);
     refrescar();
     if (lento) enviarEstadoLento(); else enviarEstado();
+  }
+
+  function quitarDelAire(identidad) {
+    const antes = estado.enVivo.length;
+    estado.enVivo = estado.enVivo.filter(function (c) { return c.split(':')[0] !== identidad; });
+    if (estado.destacado && estado.destacado.split(':')[0] === identidad) estado.destacado = null;
+    return antes !== estado.enVivo.length;
   }
 
   /* ------------------------------------------------------------ */
@@ -107,7 +123,7 @@
   });
 
   /* ------------------------------------------------------------ */
-  /* Sala del evento                                               */
+  /* Evento: título, fecha y sala                                  */
   /* ------------------------------------------------------------ */
 
   function limpiarSala(texto) {
@@ -115,7 +131,75 @@
       .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
   }
 
-  $('inSala').value = evento.sala;
+  function aFechaLocal(ms) {
+    if (!ms) return '';
+    const d = new Date(ms);
+    const p = function (n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  function horaTexto(ms) {
+    return new Date(ms).toLocaleTimeString('es-PE', { hour: 'numeric', minute: '2-digit' });
+  }
+
+  function cuandoTexto(ms) {
+    if (!ms) return '';
+    const d = new Date(ms), hoy = new Date();
+    const manana = new Date(); manana.setDate(hoy.getDate() + 1);
+    const mismoDia = function (a, b) { return a.toDateString() === b.toDateString(); };
+    let dia;
+    if (mismoDia(d, hoy)) dia = 'hoy';
+    else if (mismoDia(d, manana)) dia = 'mañana';
+    else dia = 'el ' + d.toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long' });
+    return dia + ' a las ' + horaTexto(ms);
+  }
+
+  /** Ventana en la que sirven los enlaces: { nbf, exp } en segundos, o null si no hay fecha. */
+  function ventanaDelEvento() {
+    if (!evento.fecha) return null;
+    const antes = Number(evento.antes);
+    return {
+      nbf: antes >= 0 ? (evento.fecha - antes * 60000) / 1000 - 120 : null,
+      exp: (evento.fecha + 8 * 3600e3) / 1000,
+    };
+  }
+
+  function pintarEvento() {
+    $('inTitulo').value = estado.titulo || '';
+    $('inSala').value = evento.sala;
+    $('inFecha').value = aFechaLocal(evento.fecha);
+    $('selAntes').value = String(evento.antes);
+    $('filaVigencia').classList.toggle('oculto', !!evento.fecha);
+    const ayuda = $('ayudaHorario');
+    if (evento.fecha) {
+      const antes = Number(evento.antes);
+      const cuando = cuandoTexto(evento.fecha);
+      ayuda.textContent = 'Evento ' + cuando + (/\.$/.test(cuando) ? ' ' : '. ') +
+        (antes >= 0 ? 'Los enlaces funcionan desde las ' + horaTexto(evento.fecha - antes * 60000) + ' hasta 8 horas después. ' : 'Los enlaces funcionan hasta 8 horas después. ') +
+        'Aun así, solo entran cuando tú abres la sala.';
+    } else {
+      ayuda.textContent = 'Sin fecha, los enlaces sirven el tiempo que elijas abajo. Los invitados solo entran cuando tú abres la sala.';
+    }
+    $('chkAcortar').checked = !!evento.acortar;
+    $('inPlantilla').value = evento.plantilla || PLANTILLA;
+  }
+
+  $('inTitulo').addEventListener('input', function () { estado.titulo = this.value; cambio(true); });
+
+  $('inFecha').addEventListener('change', function () {
+    const nueva = this.value ? new Date(this.value).getTime() : 0;
+    if (evento.invitados.length && nueva !== evento.fecha) {
+      S.aviso('Cambiaste la fecha: los enlaces ya creados mantienen su horario anterior. Créalos de nuevo si hace falta.', 'mensaje', 7000);
+    }
+    evento.fecha = nueva || 0;
+    guardarEvento(); pintarEvento();
+  });
+
+  $('selAntes').addEventListener('change', function () {
+    evento.antes = Number(this.value);
+    guardarEvento(); pintarEvento();
+  });
+
   $('inSala').addEventListener('change', function () {
     const nueva = limpiarSala(this.value) || salaPorDefecto();
     if (nueva === evento.sala) { this.value = nueva; return; }
@@ -128,8 +212,14 @@
     this.value = nueva;
     guardarEvento();
     pintarInvitados();
-    if (room) { desconectar(); S.aviso('Cambiaste de sala. Vuelve a conectar el panel.', 'mensaje'); }
+    if (room) { desconectar(); S.aviso('Cambiaste de sala. Vuelve a abrirla.', 'mensaje'); }
     generarObs();
+  });
+
+  $('chkAcortar').addEventListener('change', function () { evento.acortar = this.checked; guardarEvento(); });
+  $('inPlantilla').addEventListener('input', function () { evento.plantilla = this.value; guardarEvento(); });
+  $('btnPlantillaOriginal').addEventListener('click', function () {
+    evento.plantilla = PLANTILLA; guardarEvento(); $('inPlantilla').value = PLANTILLA;
   });
 
   if (location.protocol === 'file:' && !S.CFG.urlPublica) {
@@ -155,11 +245,45 @@
     t.remove();
   }
 
+  function enlaceDe(inv) { return inv.corto || inv.enlace; }
+
   function textoInvitacion(inv) {
-    const titulo = estado.titulo || evento.sala;
-    return 'Hola ' + inv.nombre.split(' ')[0] + ', te invito a participar en "' + titulo + '".\n\n' +
-      'Entra desde este enlace (celular o computadora, de preferencia con Google Chrome):\n' + inv.enlace + '\n\n' +
-      'Te recomiendo usar audífonos y buscar un lugar con buena luz y silencio. ¡Gracias!';
+    const plantilla = evento.plantilla || PLANTILLA;
+    return plantilla
+      .replace(/\{nombre\}/g, inv.nombre)
+      .replace(/\{evento\}/g, estado.titulo || evento.sala)
+      .replace(/\{cuando\}/g, cuandoTexto(inv.hora || evento.fecha))
+      .replace(/\{enlace\}/g, enlaceDe(inv))
+      .replace(/[ \t]{2,}/g, ' ');
+  }
+
+  /** Acorta con is.gd (JSONP). Intenta un enlace con el nombre del invitado, ej.: is.gd/AlbertoQuispe_k3x */
+  function acortar(url, nombre) {
+    function pedir(codigo) {
+      return new Promise(function (resolver, rechazar) {
+        const cb = 'isgd_' + S.aleatorio(8);
+        const s = document.createElement('script');
+        const tiempo = setTimeout(function () { limpiar(); rechazar(new Error('sin respuesta')); }, 9000);
+        function limpiar() { clearTimeout(tiempo); delete window[cb]; s.remove(); }
+        window[cb] = function (r) {
+          limpiar();
+          if (r && r.shorturl) resolver(r.shorturl);
+          else rechazar(Object.assign(new Error((r && r.errormessage) || 'error'), { codigo: r && r.errorcode }));
+        };
+        s.onerror = function () { limpiar(); rechazar(new Error('no disponible')); };
+        s.src = 'https://is.gd/create.php?format=json&callback=' + cb + '&url=' + encodeURIComponent(url) +
+          (codigo ? '&shorturl=' + encodeURIComponent(codigo) : '');
+        document.head.append(s);
+      });
+    }
+    const base = String(nombre || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .split(/[^A-Za-z0-9]+/).filter(Boolean).slice(0, 2)
+      .map(function (p) { return p[0].toUpperCase() + p.slice(1).toLowerCase(); }).join('').slice(0, 22);
+    const codigo = base.length >= 2 ? base + '_' + S.aleatorio(3) : '';
+    return pedir(codigo).catch(function (e) {
+      if (codigo && e.codigo === 2) return pedir('');
+      throw e;
+    });
   }
 
   function fechaCorta(ms) {
@@ -182,10 +306,11 @@
       cab.append(S.crearEl('span', 'invitado-nombre', inv.nombre),
         S.crearEl('span', 'invitado-vence', vencido ? 'Vencido' : 'Hasta ' + fechaCorta(inv.vence)));
       el.append(cab, S.crearEl('div', 'invitado-cargo', inv.cargo || '—'));
+      if (inv.corto) el.append(S.crearEl('div', 'invitado-enlace', inv.corto));
       const fila = S.crearEl('div', 'fila');
       const bCopiar = S.crearEl('button', 'btn chico'); bCopiar.type = 'button';
       bCopiar.innerHTML = S.icono('copiar') + 'Copiar';
-      bCopiar.addEventListener('click', function () { copiar(inv.enlace, 'Enlace de ' + inv.nombre + ' copiado'); });
+      bCopiar.addEventListener('click', function () { copiar(enlaceDe(inv), 'Enlace de ' + inv.nombre + ' copiado'); });
       const bWa = S.crearEl('button', 'btn chico'); bWa.type = 'button';
       bWa.innerHTML = S.icono('enviar') + 'WhatsApp';
       bWa.addEventListener('click', function () {
@@ -211,24 +336,40 @@
     const nombre = $('inInvNombre').value.trim();
     const cargo = $('inInvCargo').value.trim();
     if (!nombre) { S.aviso('Escribe el nombre del invitado', 'error'); $('inInvNombre').focus(); return; }
+    const boton = this;
+    boton.disabled = true;
+    boton.textContent = 'Creando enlace…';
+    const id = 'p-' + S.aleatorio(6);
+    const v = ventanaDelEvento();
     const horas = Number($('selVigencia').value) || 168;
-    const id = 'p-' + S.aleatorio(8);
+    const meta = { cargo: cargo, evento: estado.titulo || '' };
+    if (evento.fecha) meta.hora = evento.fecha;
     try {
       const t = await S.crearToken({
         apiKey: cred.apiKey, apiSecret: cred.apiSecret, sala: evento.sala,
-        identidad: id, nombre: nombre, horas: horas,
-        metadata: { rol: 'panelista', cargo: cargo, evento: estado.titulo || '' },
-        permisos: { canPublish: true, canSubscribe: true, canPublishData: false, canUpdateOwnMetadata: true },
+        identidad: id, nombre: nombre, metadata: meta,
+        horas: horas, nbf: v && v.nbf, exp: v && v.exp,
+        permisos: { canPublishData: false, canUpdateOwnMetadata: true },
       });
-      const inv = { id: id, nombre: nombre, cargo: cargo, enlace: S.urlBase() + '?t=' + t, vence: Date.now() + horas * 3600e3 };
+      const inv = {
+        id: id, nombre: nombre, cargo: cargo, hora: evento.fecha || 0,
+        enlace: S.urlBase() + '?t=' + t,
+        vence: v ? v.exp * 1000 : Date.now() + horas * 3600e3,
+      };
+      if (evento.acortar) {
+        try { inv.corto = await acortar(inv.enlace, nombre); }
+        catch (e) { S.aviso('No se pudo acortar (' + e.message + '). Se usará el enlace largo.', 'mensaje', 5000); }
+      }
       evento.invitados.push(inv);
       guardarEvento();
       pintarInvitados();
       $('inInvNombre').value = ''; $('inInvCargo').value = '';
-      copiar(inv.enlace, 'Enlace de ' + nombre + ' creado y copiado');
+      copiar(enlaceDe(inv), 'Enlace de ' + nombre + ' creado y copiado');
     } catch (e) {
       S.aviso('No se pudo crear el enlace: ' + S.mensajeDeError(e), 'error');
     }
+    boton.disabled = false;
+    boton.textContent = 'Crear enlace de invitado';
   });
 
   /* ------------------------------------------------------------ */
@@ -241,8 +382,7 @@
       const t = await S.crearToken({
         apiKey: cred.apiKey, apiSecret: cred.apiSecret, sala: evento.sala,
         identidad: S.ID_PROGRAMA, nombre: 'Programa OBS', horas: 24 * 30,
-        metadata: { rol: 'programa' },
-        permisos: { canPublish: false, canSubscribe: true, canPublishData: false, hidden: true },
+        permisos: { canPublish: false, canPublishData: false, hidden: true },
       });
       evento.obs = S.urlBase() + 'programa.html?t=' + t;
       guardarEvento();
@@ -261,28 +401,29 @@
   });
 
   /* ------------------------------------------------------------ */
-  /* Conexión del director                                         */
+  /* Abrir sala, cerrar panel y terminar evento                    */
   /* ------------------------------------------------------------ */
 
   function pintarConexion(texto, clase) {
     const p = $('pillConexion');
     p.className = 'pill ' + (clase || '');
     p.textContent = texto;
-    const conectado = !!room;
-    $('btnConectar').textContent = conectado ? 'Desconectar' : 'Conectar al panel';
-    $('btnConectar').classList.toggle('primario', !conectado);
+    const hay = !!room;
+    $('btnConectar').textContent = hay ? 'Cerrar panel' : 'Abrir sala';
+    $('btnConectar').classList.toggle('primario', !hay);
+    $('btnTerminar').classList.toggle('oculto', !hay);
   }
 
   $('btnConectar').addEventListener('click', function () {
     if (room) {
-      if (confirm('¿Desconectar el panel? Lo que está al aire se mantiene en OBS.')) desconectar();
+      if (confirm('¿Cerrar el panel? Los invitados que están en la sala se quedan conectados (para sacar a todos usa "Terminar evento").')) desconectar();
     } else conectar();
   });
 
   async function conectar() {
     if (!hayClaves()) { $('secClaves').open = true; S.aviso('Primero guarda las claves del proyecto', 'error'); return; }
     if (!S.CFG.livekitUrl) { S.aviso('Falta la dirección del proyecto en js/config.js', 'error'); return; }
-    pintarConexion('Conectando…', 'alerta');
+    pintarConexion('Abriendo…', 'alerta');
     $('btnConectar').disabled = true;
     let token;
     try {
@@ -294,28 +435,34 @@
       });
     } catch (e) {
       $('btnConectar').disabled = false;
-      pintarConexion('Desconectado');
+      pintarConexion('Sala cerrada');
       S.aviso(S.mensajeDeError(e), 'error');
       return;
     }
 
-    room = new LK.Room(S.opcionesSala());
-    escucharSala(room);
+    const r = new LK.Room(S.opcionesSala());
+    room = r;
+    escucharSala(r);
     try {
-      await room.connect(S.CFG.livekitUrl, token);
+      await r.connect(S.CFG.livekitUrl, token);
     } catch (e) {
       room = null;
       $('btnConectar').disabled = false;
-      pintarConexion('Desconectado');
+      pintarConexion('Sala cerrada');
       let msg = S.mensajeDeError(e);
       if (/pase/.test(msg)) msg = 'LiveKit rechazó las claves. Revisa que la API Key y el API Secret sean de este proyecto.';
       S.aviso(msg, 'error', 7000);
       return;
     }
     $('btnConectar').disabled = false;
+    // Todos empiezan en espera: se limpia lo que haya quedado al aire de antes
+    const presentes = new Set(Array.from(r.remoteParticipants.keys()));
+    estado.enVivo = estado.enVivo.filter(function (c) { return presentes.has(c.split(':')[0]); });
+    if (estado.destacado && estado.enVivo.indexOf(estado.destacado) < 0) estado.destacado = null;
+    S.guardarLocal(CLAVE_ESTADO, estado);
     enviarEstado();
-    pintarConexion('Conectado', 'ok');
-    S.aviso('Panel conectado a la sala ' + evento.sala, 'ok');
+    pintarConexion('Sala abierta', 'ok');
+    S.aviso('Sala ' + evento.sala + ' abierta. Los invitados ya pueden entrar.', 'ok');
     refrescar();
     pintarRetorno();
   }
@@ -326,10 +473,46 @@
     room = null;
     r.disconnect();
     limpiarAudios();
-    pintarConexion('Desconectado');
+    pintarConexion('Sala cerrada');
     refrescar();
     pintarRetorno();
   }
+
+  async function apiSala(metodo, cuerpo) {
+    const t = await S.crearToken({
+      apiKey: cred.apiKey, apiSecret: cred.apiSecret, sala: evento.sala,
+      identidad: 'director-api', horas: 0.1, permisos: { roomAdmin: true, roomCreate: true },
+    });
+    const base = S.CFG.livekitUrl.replace(/^wss:/, 'https:').replace(/^ws:/, 'http:').replace(/\/$/, '');
+    const resp = await fetch(base + '/twirp/livekit.RoomService/' + metodo, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + t, 'Content-Type': 'application/json' },
+      body: JSON.stringify(cuerpo),
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    return resp.json();
+  }
+
+  $('btnTerminar').addEventListener('click', async function () {
+    if (!room) return;
+    if (!confirm('¿Terminar el evento?\n\nSe desconecta a TODOS: invitados, OBS y este panel. La plataforma deja de consumir.')) return;
+    const boton = this;
+    boton.disabled = true;
+    // 1) Aviso a todos (invitados y OBS) para que se desconecten solos
+    try {
+      await room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify({ accion: 'terminar' })), { reliable: true, topic: 'sala' });
+    } catch (e) { /* seguimos */ }
+    // 2) Limpiar el programa
+    estado.enVivo = []; estado.destacado = null; estado.cintillo.visible = false;
+    S.guardarLocal(CLAVE_ESTADO, estado);
+    await new Promise(function (r) { setTimeout(r, 800); });
+    // 3) Cerrar la sala en LiveKit (saca a cualquiera que quede)
+    try { await apiSala('DeleteRoom', { room: evento.sala }); } catch (e) { /* si falla, ya avisamos a todos */ }
+    desconectar();
+    boton.disabled = false;
+    pintarTextos();
+    S.aviso('Evento terminado. No queda nadie conectado.', 'ok', 5000);
+  });
 
   function escucharSala(r) {
     const E = LK.RoomEvent;
@@ -342,7 +525,10 @@
       if (S.esParticipanteDeEscena(p)) S.aviso((p.name || p.identity) + ' entró a la sala', 'ok', 3000);
     });
     r.on(E.ParticipantDisconnected, function (p) {
-      if (S.esParticipanteDeEscena(p)) S.aviso((p.name || p.identity) + ' salió de la sala', 'mensaje', 3500);
+      if (!S.esParticipanteDeEscena(p)) return;
+      S.aviso((p.name || p.identity) + ' salió de la sala', 'mensaje', 3500);
+      // Si vuelve a entrar, entra en espera
+      if (quitarDelAire(p.identity)) cambio();
     });
     r.on(E.TrackSubscribed, function (pista, pub) { if (pista.kind === 'audio') ponerAudio(pista, pub); });
     r.on(E.TrackUnsubscribed, function (pista, pub) { quitarAudio(pub.trackSid); });
@@ -353,21 +539,21 @@
       }
     });
     r.on(E.Reconnecting, function () { pintarConexion('Reconectando…', 'alerta'); });
-    r.on(E.Reconnected, function () { pintarConexion('Conectado', 'ok'); enviarEstado(); });
+    r.on(E.Reconnected, function () { pintarConexion('Sala abierta', 'ok'); enviarEstado(); });
     r.on(E.Disconnected, function (motivo) {
-      if (room !== r) return; // desconexión pedida por nosotros
+      if (room !== r) return; // lo cerramos nosotros
       room = null;
       limpiarAudios();
-      pintarConexion('Desconectado');
+      pintarConexion('Sala cerrada');
       refrescar();
       pintarRetorno();
       if (motivo === LK.DisconnectReason.DUPLICATE_IDENTITY) S.aviso('El panel se abrió en otra pestaña o computadora. Esta quedó desconectada.', 'error', 8000);
-      else if (motivo !== LK.DisconnectReason.CLIENT_INITIATED) S.aviso('Se perdió la conexión del panel. Vuelve a conectar.', 'error', 8000);
+      else if (motivo !== LK.DisconnectReason.CLIENT_INITIATED && motivo !== LK.DisconnectReason.ROOM_DELETED) S.aviso('Se perdió la conexión del panel. Vuelve a abrir la sala.', 'error', 8000);
     });
   }
 
   /* ------------------------------------------------------------ */
-  /* Audio de la sala en el panel (retorno)                        */
+  /* Retorno: hablar a los panelistas (no sale al aire)            */
   /* ------------------------------------------------------------ */
 
   const audios = new Map();
@@ -397,26 +583,32 @@
   function pintarRetorno() {
     const lp = room ? room.localParticipant : null;
     const mic = !!(lp && lp.isMicrophoneEnabled), cam = !!(lp && lp.isCameraEnabled);
-    $('btnHablar').innerHTML = S.icono(mic ? 'mic' : 'micOff') + (mic ? 'Hablando a panelistas' : 'Hablar a panelistas');
-    $('btnHablar').classList.toggle('activo', mic);
+    const yoAlAire = estado.enVivo.indexOf(YO) >= 0;
+    $('btnHablar').innerHTML = S.icono(mic ? 'mic' : 'micOff') +
+      (mic ? (yoAlAire ? 'Tu micrófono está AL AIRE' : 'Hablando a panelistas') : 'Hablar a panelistas');
+    $('btnHablar').classList.toggle('activo', mic && !yoAlAire);
+    $('btnHablar').classList.toggle('al-aire', mic && yoAlAire);
     $('btnMiCam').innerHTML = S.icono(cam ? 'cam' : 'camOff') + (cam ? 'Mi cámara visible' : 'Mostrar mi cámara');
     $('btnMiCam').classList.toggle('activo', cam);
     $('btnEscuchar').innerHTML = S.icono(retorno.escuchar ? 'altavoz' : 'micOff') + (retorno.escuchar ? 'Escuchando la sala' : 'Sala en silencio');
     $('btnEscuchar').classList.toggle('encendido', retorno.escuchar);
     $('btnHablar').disabled = !room; $('btnMiCam').disabled = !room;
+    $('ayudaRetorno').textContent = yoAlAire
+      ? 'Estás AL AIRE: tu voz y tu cámara salen en la transmisión. Quítate del aire en tu tarjeta para volver a hablar solo a los panelistas.'
+      : 'Tu voz solo la escuchan los panelistas: no sale en la transmisión. Úsalo para avisarles cuándo empiezan.';
   }
 
   $('btnHablar').addEventListener('click', async function () {
     if (!room) return;
     try { await room.localParticipant.setMicrophoneEnabled(!room.localParticipant.isMicrophoneEnabled); }
     catch (e) { S.aviso(S.mensajeDeError(e), 'error'); }
-    pintarRetorno();
+    pintarRetorno(); refrescar();
   });
   $('btnMiCam').addEventListener('click', async function () {
     if (!room) return;
     try { await room.localParticipant.setCameraEnabled(!room.localParticipant.isCameraEnabled); }
     catch (e) { S.aviso(S.mensajeDeError(e), 'error'); }
-    pintarRetorno();
+    pintarRetorno(); refrescar();
   });
   $('btnEscuchar').addEventListener('click', function () {
     retorno.escuchar = !retorno.escuchar;
@@ -429,23 +621,8 @@
   /* Acciones sobre participantes                                  */
   /* ------------------------------------------------------------ */
 
-  async function apiSala(metodo, cuerpo) {
-    const t = await S.crearToken({
-      apiKey: cred.apiKey, apiSecret: cred.apiSecret, sala: evento.sala,
-      identidad: 'director-api', horas: 0.1, permisos: { roomAdmin: true },
-    });
-    const base = S.CFG.livekitUrl.replace(/^wss:/, 'https:').replace(/^ws:/, 'http:').replace(/\/$/, '');
-    const r = await fetch(base + '/twirp/livekit.RoomService/' + metodo, {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + t, 'Content-Type': 'application/json' },
-      body: JSON.stringify(cuerpo),
-    });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    return r.json();
-  }
-
   function enviarOrden(identidad, orden) {
-    if (!room) return Promise.resolve();
+    if (!conectado()) return Promise.resolve();
     const datos = new TextEncoder().encode(JSON.stringify(orden));
     return room.localParticipant.publishData(datos, { reliable: true, destinationIdentities: [identidad], topic: 'sala' });
   }
@@ -459,12 +636,27 @@
       estado.enVivo.push(clave);
     }
     cambio();
+    pintarRetorno();
+  }
+
+  async function alternarMiAire() {
+    if (!room) return;
+    if (estado.enVivo.indexOf(YO) >= 0) { alternarAire(YO); return; }
+    const lp = room.localParticipant;
+    if (!confirm('Vas a salir en la transmisión: tu cámara y tu voz se verán y escucharán en vivo. ¿Continuar?')) return;
+    try {
+      if (!lp.isCameraEnabled) await lp.setCameraEnabled(true);
+      if (!lp.isMicrophoneEnabled) await lp.setMicrophoneEnabled(true);
+    } catch (e) { S.aviso(S.mensajeDeError(e), 'error'); }
+    alternarAire(YO);
   }
 
   function destacar(clave) {
     if (estado.enVivo.indexOf(clave) < 0) estado.enVivo.push(clave);
     estado.destacado = clave;
-    if (estado.diseno === 'auto' || estado.diseno === 'cuadricula') estado.diseno = 'destacado';
+    if (estado.diseno === 'auto' || estado.diseno === 'cuadricula') {
+      estado.diseno = /:pantalla$/.test(clave) ? 'presentacion' : 'destacado';
+    }
     cambio();
   }
 
@@ -506,8 +698,7 @@
 
   async function sacar(p) {
     if (!confirm('¿Sacar a ' + (p.name || p.identity) + ' de la sala?')) return;
-    estado.enVivo = estado.enVivo.filter(function (c) { return c.split(':')[0] !== p.identity; });
-    if (estado.destacado && estado.destacado.split(':')[0] === p.identity) estado.destacado = null;
+    quitarDelAire(p.identity);
     cambio();
     try {
       await apiSala('RemoveParticipant', { room: evento.sala, identity: p.identity });
@@ -517,7 +708,7 @@
   }
 
   /* ------------------------------------------------------------ */
-  /* Cartas de participantes                                       */
+  /* Cartas de participantes (la tuya primero)                     */
   /* ------------------------------------------------------------ */
 
   const cartas = new Map(); // clave -> { el, video, pista, ... }
@@ -551,20 +742,31 @@
     info.append(nombre, cargo);
     const acciones = S.crearEl('div', 'carta-acciones');
     el.append(zona, info, acciones);
-    return { el: el, zona: zona, video: video, ini: ini, ins: ins, nombre: nombre, cargo: cargo, acciones: acciones, pista: null, clave: clave, tipo: null };
+    return { el: el, zona: zona, video: video, ini: ini, ins: ins, nombre: nombre, cargo: cargo, acciones: acciones, pista: null, clave: clave };
   }
 
-  function participante(identidad) { return room ? room.remoteParticipants.get(identidad) : null; }
+  function participante(identidad) {
+    if (!room) return null;
+    if (identidad === S.ID_DIRECTOR) return room.localParticipant;
+    return room.remoteParticipants.get(identidad);
+  }
 
-  function armarAcciones(c, identidad, esPantalla) {
+  function armarAcciones(c, identidad, tipo) {
     c.acciones.innerHTML = '';
     const clave = c.clave;
     function con(fn) { return function () { const p = participante(identidad); if (p) fn(p); }; }
+    if (tipo === 'yo') {
+      c.bAire = boton('aire', 'Ponerme al aire', 'aire', alternarMiAire);
+      c.bDest = boton('estrella', '', '', function () { destacar(clave); }, 'Destacar (recuadro grande)');
+      c.acciones.append(c.bAire, c.bDest,
+        boton('cintillo', '', '', con(cintilloDe), 'Mostrar/ocultar tu cintillo grande'),
+        boton('editar', '', '', con(editar), 'Tu nombre y cargo en pantalla'));
+      return;
+    }
     c.bAire = boton('aire', 'Al aire', 'aire', function () { alternarAire(clave); });
-    c.acciones.append(c.bAire);
     c.bDest = boton('estrella', '', '', function () { destacar(clave); }, 'Destacar (recuadro grande)');
-    c.acciones.append(c.bDest);
-    if (esPantalla) return;
+    c.acciones.append(c.bAire, c.bDest);
+    if (tipo === 'pantalla') return;
     c.acciones.append(
       boton('cintillo', '', '', con(cintilloDe), 'Mostrar/ocultar su cintillo grande'),
       boton('micOff', '', '', con(silenciar), 'Silenciar su micrófono'),
@@ -579,14 +781,21 @@
     let personas = 0;
     let orden = 0;
     if (room) {
-      room.remoteParticipants.forEach(function (p) {
-        if (!S.esParticipanteDeEscena(p)) return;
-        personas++;
+      const lista = [room.localParticipant].concat(Array.from(room.remoteParticipants.values()));
+      lista.forEach(function (p) {
+        const esYo = p === room.localParticipant;
+        if (!esYo && !S.esParticipanteDeEscena(p)) return;
+        if (!esYo) personas++;
         const n = S.nombreDe(p, estado);
         const cam = p.getTrackPublication(LK.Track.Source.Camera);
         const pan = p.getTrackPublication(LK.Track.Source.ScreenShare);
-        const items = [{ clave: p.identity + ':cam', pantalla: false, pista: cam && cam.track && !cam.isMuted ? cam.track : null, nombre: n.nombre, cargo: n.cargo }];
-        if (pan) items.push({ clave: p.identity + ':pantalla', pantalla: true, pista: pan.track || null, nombre: 'Pantalla de ' + n.nombre, cargo: 'Pantalla compartida' });
+        const items = [{
+          clave: p.identity + ':cam', tipo: esYo ? 'yo' : 'camara',
+          pista: cam && cam.track && !cam.isMuted ? cam.track : null,
+          nombre: esYo ? 'Tú (' + n.nombre + ')' : n.nombre,
+          cargo: esYo ? (n.cargo || 'Producción: no sales al aire salvo que tú quieras') : n.cargo,
+        }];
+        if (pan && !esYo) items.push({ clave: p.identity + ':pantalla', tipo: 'pantalla', pista: pan.track || null, nombre: 'Pantalla de ' + n.nombre, cargo: 'Pantalla compartida' });
 
         items.forEach(function (it) {
           vigentes.add(it.clave);
@@ -594,28 +803,29 @@
           if (!c) {
             c = crearCarta(it.clave);
             cartas.set(it.clave, c);
-            armarAcciones(c, p.identity, it.pantalla);
+            armarAcciones(c, p.identity, it.tipo);
           }
           ponerEnOrden(caja, c.el, orden++);
           const alAire = estado.enVivo.indexOf(it.clave) >= 0;
           c.el.classList.toggle('al-aire', alAire);
-          c.el.classList.toggle('pantalla', it.pantalla);
-          c.el.classList.toggle('hablando', !it.pantalla && p.isSpeaking);
+          c.el.classList.toggle('mia', it.tipo === 'yo');
+          c.el.classList.toggle('pantalla', it.tipo === 'pantalla');
+          c.el.classList.toggle('hablando', it.tipo !== 'pantalla' && p.isSpeaking);
           c.zona.classList.toggle('con-video', !!it.pista);
           c.nombre.textContent = it.nombre;
           c.cargo.textContent = it.cargo || '';
           c.ini.textContent = S.iniciales(n.nombre);
-          c.bAire.innerHTML = S.icono('aire') + '<span>' + (alAire ? 'Quitar del aire' : 'Poner al aire') + '</span>';
+          const textoAire = it.tipo === 'yo' ? (alAire ? 'Quitarme del aire' : 'Ponerme al aire') : (alAire ? 'Quitar del aire' : 'Poner al aire');
+          c.bAire.innerHTML = S.icono('aire') + '<span>' + textoAire + '</span>';
           c.bAire.classList.toggle('activo', alAire);
           c.bDest.classList.toggle('encendido', estado.destacado === it.clave);
-          // insignias
           c.ins.innerHTML = '';
           const izq = S.crearEl('div', 'fila'); izq.style.gap = '5px';
           if (alAire) izq.append(S.crearEl('span', 'insignia aire', 'AL AIRE'));
-          if (!it.pantalla && !p.isMicrophoneEnabled) izq.append(S.crearEl('span', 'insignia mic-off', 'SIN MIC'));
+          if (it.tipo !== 'pantalla' && !p.isMicrophoneEnabled) izq.append(S.crearEl('span', 'insignia mic-off', 'SIN MIC'));
           const der = S.crearEl('div');
           const q = p.connectionQuality;
-          if (!it.pantalla && (q === LK.ConnectionQuality.Poor || q === LK.ConnectionQuality.Lost)) {
+          if (it.tipo === 'camara' && (q === LK.ConnectionQuality.Poor || q === LK.ConnectionQuality.Lost)) {
             der.append(S.crearEl('span', 'insignia calidad-' + q, q === LK.ConnectionQuality.Lost ? 'SIN SEÑAL' : 'SEÑAL DÉBIL'));
           }
           c.ins.append(izq, der);
@@ -633,16 +843,17 @@
       c.el.remove();
       cartas.delete(clave);
     });
-    $('sinParticipantes').classList.toggle('oculto', vigentes.size > 0);
-    $('sinParticipantes').textContent = room
-      ? 'Todavía no entra nadie. Envía los enlaces a tus invitados.'
-      : 'Conéctate al panel y envía los enlaces a tus invitados. Aquí aparecerán cuando entren.';
-    $('contador').textContent = room ? '(' + personas + ')' : '';
-    if (room && room.state === 'connected') pintarConexion('Conectado · ' + personas + (personas === 1 ? ' invitado' : ' invitados'), 'ok');
+    const vacio = $('sinParticipantes');
+    vacio.classList.toggle('oculto', personas > 0);
+    vacio.textContent = room
+      ? 'La sala está abierta. Todavía no entra ningún invitado.'
+      : 'Pulsa "Abrir sala" (arriba) cuando quieras que entren los invitados. Mientras la sala esté cerrada, nadie puede entrar ni se consume nada.';
+    $('contador').textContent = room ? '(' + personas + (personas === 1 ? ' invitado)' : ' invitados)') : '';
+    if (conectado()) pintarConexion('Sala abierta · ' + personas + (personas === 1 ? ' invitado' : ' invitados'), 'ok');
   }
 
   /* ------------------------------------------------------------ */
-  /* Diseños y textos                                              */
+  /* Escenas y textos                                              */
   /* ------------------------------------------------------------ */
 
   Array.prototype.forEach.call($('disenos').querySelectorAll('button'), function (b) {
@@ -650,7 +861,7 @@
   });
 
   $('btnTodosFuera').addEventListener('click', function () {
-    estado.enVivo = []; estado.destacado = null; cambio();
+    estado.enVivo = []; estado.destacado = null; cambio(); pintarRetorno();
   });
   $('btnLimpiarGraficos').addEventListener('click', function () {
     estado.cintillo.visible = false; estado.mostrarBanner = false;
@@ -658,7 +869,6 @@
   });
 
   function pintarTextos() {
-    $('inTitulo').value = estado.titulo;
     $('chkTitulo').checked = estado.mostrarTitulo;
     $('inCtTitulo').value = estado.cintillo.titulo;
     $('inCtSub').value = estado.cintillo.subtitulo;
@@ -669,6 +879,7 @@
     $('chkDesplazar').checked = estado.desplazar;
     $('chkNombres').checked = estado.nombres;
     $('chkResaltar').checked = estado.resaltar;
+    $('selVertical').value = estado.vertical || 'difuminado';
     $('inLogo').value = estado.logo;
     $('colMarca').value = estado.colorMarca || S.CFG.colorMarca;
     $('colFondo').value = estado.colorFondo || S.CFG.colorFondo;
@@ -683,7 +894,6 @@
     $(id).addEventListener('change', function () { aplicar(this.checked); cambio(); });
   }
 
-  enlazarTexto('inTitulo', function (v) { estado.titulo = v; });
   enlazarCheck('chkTitulo', function (v) { estado.mostrarTitulo = v; });
   enlazarTexto('inCtTitulo', function (v) { estado.cintillo.titulo = v; });
   enlazarTexto('inCtSub', function (v) { estado.cintillo.subtitulo = v; });
@@ -697,6 +907,7 @@
   enlazarTexto('colFondo', function (v) { estado.colorFondo = v; });
   enlazarTexto('inFondoImg', function (v) { estado.fondoImagen = v.trim(); });
   enlazarCheck('chkTransparente', function (v) { estado.fondoTransparente = v; });
+  $('selVertical').addEventListener('change', function () { estado.vertical = this.value; cambio(); });
 
   $('btnCintillo').addEventListener('click', function () {
     if (!estado.cintillo.visible && !estado.cintillo.titulo && !estado.cintillo.subtitulo) {
@@ -723,22 +934,21 @@
         b.classList.toggle('activo', b.dataset.diseno === estado.diseno);
       });
       dibujarCartas();
-      if (estado.cintillo) $('btnCintillo').classList.toggle('activo', !!estado.cintillo.visible);
+      $('btnCintillo').classList.toggle('activo', !!estado.cintillo.visible);
     });
   }
 
-  window.addEventListener('beforeunload', function (e) {
-    if (room) { room.disconnect(); }
-  });
+  window.addEventListener('beforeunload', function () { if (room) room.disconnect(); });
 
   /* ------------------------------------------------------------ */
   /* Inicio                                                        */
   /* ------------------------------------------------------------ */
   pintarClaves();
+  pintarEvento();
   pintarInvitados();
   pintarTextos();
   pintarRetorno();
-  pintarConexion('Desconectado');
+  pintarConexion('Sala cerrada');
   refrescar();
   if (hayClaves() && !evento.obs) generarObs();
 })();

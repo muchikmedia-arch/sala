@@ -1,6 +1,8 @@
 /*
  * Sala Muchik - página del panelista
- * El invitado abre su enlace, prueba cámara y micrófono y entra a la sala.
+ * El invitado abre su enlace (ya trae su nombre y cargo), activa su cámara y
+ * micrófono, y entra a la sala. Siempre entra EN ESPERA: la producción decide
+ * cuándo sale al aire. No puede entrar antes de la hora ni si la sala está cerrada.
  */
 (function () {
   'use strict';
@@ -9,7 +11,7 @@
   const $ = function (id) { return document.getElementById(id); };
 
   $('nombreApp').textContent = S.CFG.nombrePlataforma;
-  $('credito').textContent = 'Desarrollado por ' + S.CFG.credito;
+  $('credito').textContent = S.textoCredito();
   document.title = S.CFG.nombrePlataforma;
   $('icoAudifonos').innerHTML = S.icono('audifonos');
 
@@ -22,21 +24,27 @@
   let pistaAudio = null;
   let camActiva = true;
   let micActivo = true;
+  let previaIniciada = false;
   let medidor = null;
   let bloqueoPantalla = null;
   let saliendo = false;
+  let entrando = false;
+  let reintentoSala = null;
+  let intentosSala = 0;
+  let principal = 'yo';   // qué imagen se ve en grande en la sala
 
   /* ---------------- Vistas ---------------- */
 
   function mostrar(vista) {
     ['vistaError', 'vistaLobby', 'vistaSala'].forEach(function (v) { $(v).classList.toggle('oculto', v !== vista); });
+    document.body.classList.toggle('en-sala', vista === 'vistaSala');
   }
 
   function error(titulo, texto, reintentar) {
     $('tituloError').textContent = titulo;
     $('textoError').textContent = texto;
     $('btnReintentar').classList.toggle('oculto', !reintentar);
-    $('pillEstado').classList.add('oculto');
+    pintarBarra(null);
     mostrar('vistaError');
   }
 
@@ -54,33 +62,90 @@
   const meta = S.leerMeta(datos.metadata);
   const miIdentidad = datos.sub;
   const nombreEvento = meta.evento || datos.video.room.replace(/[-_]+/g, ' ');
+  const horaEvento = meta.hora ? Number(meta.hora) : 0;           // ms
+  const desde = datos.nbf ? datos.nbf * 1000 + 120000 : 0;        // ms (el pase trae 2 min de margen)
+  let misDatos = { nombre: datos.name || 'Invitado', cargo: meta.cargo || '' };
 
-  $('saludo').textContent = (datos.name || '').split(' ')[0] || 'bienvenido/a';
+  /* ---------------- Fechas en palabras ---------------- */
+
+  function horaTexto(ms) {
+    return new Date(ms).toLocaleTimeString('es-PE', { hour: 'numeric', minute: '2-digit' });
+  }
+  function conPunto(t) { return /\.$/.test(t) ? t : t + '.'; }
+  function cuandoTexto(ms) {
+    const d = new Date(ms), hoy = new Date();
+    const manana = new Date(); manana.setDate(hoy.getDate() + 1);
+    const mismoDia = function (a, b) { return a.toDateString() === b.toDateString(); };
+    let dia;
+    if (mismoDia(d, hoy)) dia = 'hoy';
+    else if (mismoDia(d, manana)) dia = 'mañana';
+    else dia = 'el ' + d.toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long' });
+    return dia + ' a las ' + horaTexto(ms);
+  }
+
+  /* ---------------- Barra superior (estado) ---------------- */
+
+  function pintarBarra(tipo, texto) {
+    const barra = $('barra'), pill = $('pillEstado'), caja = $('estadoBarra');
+    barra.classList.remove('al-aire', 'alerta');
+    if (!tipo) { caja.classList.add('oculto'); return; }
+    caja.classList.remove('oculto');
+    if (tipo === 'aire') {
+      barra.classList.add('al-aire');
+      pill.className = 'pill aire'; pill.textContent = 'AL AIRE';
+    } else if (tipo === 'alerta') {
+      barra.classList.add('alerta');
+      pill.className = 'pill alerta'; pill.textContent = 'RECONECTANDO';
+    } else {
+      pill.className = 'pill'; pill.textContent = 'EN ESPERA';
+    }
+    $('textoEstado').textContent = texto || '';
+  }
+
+  /* ---------------- Datos del invitado ---------------- */
+
+  $('saludo').textContent = misDatos.nombre.split(' ')[0] || 'bienvenido/a';
   $('nombreEvento').textContent = nombreEvento;
-  $('inNombre').value = datos.name || '';
-  $('inCargo').value = meta.cargo || '';
+  $('cuandoEvento').textContent = horaEvento ? ', ' + conPunto(cuandoTexto(horaEvento)) : '.';
+
+  function pintarDatos() {
+    $('comoNombre').textContent = misDatos.nombre;
+    $('comoCargo').textContent = misDatos.cargo ? ' (' + misDatos.cargo + ')' : '';
+  }
+  pintarDatos();
+  $('btnCambiarDatos').addEventListener('click', function () {
+    $('inNombre').value = misDatos.nombre;
+    $('inCargo').value = misDatos.cargo;
+    $('cajaDatos').classList.toggle('oculto');
+  });
+  $('btnGuardarDatos').addEventListener('click', function () {
+    misDatos = { nombre: $('inNombre').value.trim() || misDatos.nombre, cargo: $('inCargo').value.trim() };
+    pintarDatos();
+    $('cajaDatos').classList.add('oculto');
+  });
 
   /* ---------------- Botones con ícono ---------------- */
 
   function pintarBoton(boton, icono, texto, apagado) {
-    boton.innerHTML = S.icono(icono) + '<span>' + texto + '</span>';
+    boton.innerHTML = S.icono(icono) + (texto ? '<span>' + texto + '</span>' : '');
     boton.classList.toggle('apagado', !!apagado);
+    if (!texto) boton.title = apagado ? 'Encender' : 'Apagar';
   }
 
   function pintarPrevios() {
-    pintarBoton($('btnPreCam'), camActiva ? 'cam' : 'camOff', camActiva ? 'Apagar cámara' : 'Encender cámara', !camActiva);
-    pintarBoton($('btnPreMic'), micActivo ? 'mic' : 'micOff', micActivo ? 'Silenciar micrófono' : 'Activar micrófono', !micActivo);
-    $('previaSin').classList.toggle('oculto', camActiva && !!pistaVideo);
+    pintarBoton($('btnPreCam'), camActiva ? 'cam' : 'camOff', '', !camActiva);
+    pintarBoton($('btnPreMic'), micActivo ? 'mic' : 'micOff', '', !micActivo);
+    $('btnPreCam').disabled = !previaIniciada;
+    $('btnPreMic').disabled = !previaIniciada || !pistaAudio;
+    $('previaSin').classList.toggle('oculto', !previaIniciada || (camActiva && !!pistaVideo));
   }
 
-  /* ---------------- Antesala ---------------- */
+  /* ---------------- Antesala: permisos y vista previa ---------------- */
 
   async function llenarDispositivos() {
     try {
-      const cams = await LK.Room.getLocalDevices('videoinput', true);
-      const mics = await LK.Room.getLocalDevices('audioinput', true);
-      llenarSelect($('selCam'), cams, pistaVideo);
-      llenarSelect($('selMic'), mics, pistaAudio);
+      llenarSelect($('selCam'), await LK.Room.getLocalDevices('videoinput', true), pistaVideo);
+      llenarSelect($('selMic'), await LK.Room.getLocalDevices('audioinput', true), pistaAudio);
     } catch (e) { /* sin lista */ }
   }
 
@@ -123,6 +188,7 @@
         $('nivel').style.width = (micActivo ? nivel * 100 : 0) + '%';
         requestAnimationFrame(ciclo);
       })();
+      if (ctx.state === 'suspended') ctx.resume().catch(function () {});
       document.addEventListener('click', function () { if (ctx.state === 'suspended') ctx.resume(); }, { once: true });
       medidor = { parar: function () { activo = false; try { ctx.close(); } catch (e) { /* nada */ } } };
     } catch (e) { /* sin medidor */ }
@@ -133,10 +199,19 @@
     $('nivel').style.width = '0%';
   }
 
+  function mostrarCapa(cual) {
+    $('capaPermiso').classList.toggle('oculto', cual !== 'permiso');
+    $('capaBloqueo').classList.toggle('oculto', cual !== 'bloqueo');
+  }
+
+  /** Pide permiso y enciende la vista previa. Devuelve true si hay al menos cámara o micrófono. */
   async function iniciarPrevia() {
+    if (previaIniciada) return !!(pistaAudio || pistaVideo);
     $('lobbyError').textContent = '';
+    $('btnActivar').disabled = true;
     const opcVideo = { resolution: LK.VideoPresets.h720.resolution, facingMode: 'user' };
     const opcAudio = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+    let falla = null;
     try {
       const pistas = await LK.createLocalTracks({ audio: opcAudio, video: opcVideo });
       pistas.forEach(function (p) {
@@ -144,24 +219,31 @@
         if (p.kind === 'audio') pistaAudio = p;
       });
     } catch (err) {
-      // Intentar por separado (por ejemplo, si no hay cámara)
+      falla = err;
       try { pistaAudio = await LK.createLocalAudioTrack(opcAudio); } catch (e) { pistaAudio = null; }
       try { pistaVideo = await LK.createLocalVideoTrack(opcVideo); } catch (e) { pistaVideo = null; }
-      if (!pistaAudio && !pistaVideo) {
-        $('lobbyError').textContent = S.mensajeDeError(err) + ' Toca el candado junto a la dirección del navegador y permite cámara y micrófono, luego recarga la página.';
-      } else if (!pistaVideo) {
-        $('lobbyError').textContent = 'No se pudo usar la cámara. Puedes entrar solo con audio.';
-      } else if (!pistaAudio) {
-        $('lobbyError').textContent = 'No se pudo usar el micrófono. Revisa los permisos del navegador.';
-      }
     }
+    $('btnActivar').disabled = false;
+    if (!pistaAudio && !pistaVideo) {
+      if (falla && /NotAllowed|Permission|denied/i.test(String(falla.name || falla.message))) mostrarCapa('bloqueo');
+      else { mostrarCapa('permiso'); $('lobbyError').textContent = S.mensajeDeError(falla); }
+      return false;
+    }
+    previaIniciada = true;
+    mostrarCapa(null);
+    if (!pistaVideo) $('lobbyError').textContent = 'No se pudo usar la cámara. Puedes entrar solo con audio.';
+    else if (!pistaAudio) $('lobbyError').textContent = 'No se pudo usar el micrófono. Revisa los permisos del navegador.';
     camActiva = !!pistaVideo;
     micActivo = !!pistaAudio;
     if (pistaVideo) pistaVideo.attach($('previa'));
     iniciarMedidor();
     pintarPrevios();
     await llenarDispositivos();
+    return true;
   }
+
+  $('btnActivar').addEventListener('click', iniciarPrevia);
+  $('btnRecargar').addEventListener('click', function () { location.reload(); });
 
   $('selCam').addEventListener('change', async function () {
     if (!this.value) return;
@@ -212,51 +294,126 @@
     pintarPrevios();
   });
 
+  /* ---------------- Horario: no entrar antes de tiempo ---------------- */
+
+  function esTemprano() { return desde && Date.now() < desde; }
+
+  function pintarHorario() {
+    const boton = $('btnEntrar');
+    const aviso = $('avisoEntrada');
+    if (entrando || reintentoSala) return;
+    if (esTemprano()) {
+      boton.disabled = true;
+      boton.textContent = 'Podrás entrar desde las ' + horaTexto(desde);
+      aviso.classList.remove('oculto');
+      aviso.textContent = (horaEvento ? conPunto('El evento es ' + cuandoTexto(horaEvento)) + ' ' : '') +
+        conPunto('La sala se abre ' + cuandoTexto(desde)) + ' Mientras tanto puedes probar aquí tu cámara y micrófono.';
+    } else if (boton.textContent.indexOf('Podrás entrar') === 0) {
+      boton.disabled = false;
+      boton.textContent = 'Entrar a la sala';
+      aviso.classList.add('oculto');
+    }
+  }
+  pintarHorario();
+  setInterval(pintarHorario, 15000);
+
   /* ---------------- Entrar a la sala ---------------- */
 
   $('btnEntrar').addEventListener('click', entrar);
 
-  async function entrar() {
+  function salaCerrada() {
+    const aviso = $('avisoEntrada');
     const boton = $('btnEntrar');
+    clearTimeout(reintentoSala);
+    reintentoSala = null;
+    intentosSala++;
+    aviso.classList.remove('oculto');
+    if (intentosSala > 30) {
+      boton.disabled = false;
+      boton.textContent = 'Intentar de nuevo';
+      aviso.textContent = 'La sala sigue cerrada. Cuando la producción te avise, toca "Intentar de nuevo".';
+      return;
+    }
+    boton.disabled = true;
+    boton.textContent = 'Esperando a que abran la sala…';
+    aviso.textContent = 'La sala todavía no está abierta. La producción la abrirá en unos minutos y entrarás solo/a. No cierres esta página.';
+    const ahora = S.crearEl('button', 'btn chico', 'Intentar ahora');
+    ahora.type = 'button';
+    ahora.addEventListener('click', function () { clearTimeout(reintentoSala); reintentoSala = null; entrar(); });
+    aviso.append(document.createElement('br'), ahora);
+    reintentoSala = setTimeout(function esperar() {
+      if (document.visibilityState === 'hidden') { reintentoSala = setTimeout(esperar, 5000); return; }
+      reintentoSala = null;
+      entrar();
+    }, 60000);
+  }
+
+  async function entrar() {
+    if (entrando || esTemprano()) return;
+    const boton = $('btnEntrar');
+    if (!previaIniciada) {
+      boton.disabled = true;
+      const ok = await iniciarPrevia();
+      boton.disabled = false;
+      if (!ok) return;
+    }
+    entrando = true;
     boton.disabled = true;
     boton.textContent = 'Entrando…';
     $('lobbyError').textContent = '';
 
-    const nombre = $('inNombre').value.trim() || datos.name || 'Invitado';
-    const cargo = $('inCargo').value.trim();
-
     const opc = S.opcionesSala();
     if ($('selCam').value) opc.videoCaptureDefaults = Object.assign({}, opc.videoCaptureDefaults, { deviceId: $('selCam').value });
     if ($('selMic').value) opc.audioCaptureDefaults = Object.assign({}, opc.audioCaptureDefaults, { deviceId: $('selMic').value });
-    room = new LK.Room(opc);
-    escucharSala();
+    const r = new LK.Room(opc);
+    room = r;
+    saliendo = false;
 
     try {
-      await room.connect(S.CFG.livekitUrl, token);
+      await r.connect(S.CFG.livekitUrl, token, { autoSubscribe: false });
     } catch (err) {
+      entrando = false;
+      room = null;
       boton.disabled = false;
       boton.textContent = 'Entrar a la sala';
       $('lobbyError').textContent = S.mensajeDeError(err);
-      room = null;
       return;
     }
 
-    // Actualizar nombre y cargo si los cambió
+    // ¿La producción ya abrió la sala? Si no, salimos enseguida para no gastar.
+    if (!r.remoteParticipants.has(S.ID_DIRECTOR)) {
+      saliendo = true;
+      await r.disconnect(false);
+      room = null;
+      entrando = false;
+      salaCerrada();
+      return;
+    }
+    intentosSala = 0;
+    $('avisoEntrada').classList.add('oculto');
+    escucharSala(r);
+
+    // Recibir a los demás
+    r.remoteParticipants.forEach(function (p) {
+      p.trackPublications.forEach(function (pub) { try { pub.setSubscribed(true); } catch (e) { /* nada */ } });
+    });
+
+    // Nombre y cargo si los cambió
     try {
-      if (nombre !== (datos.name || '')) await room.localParticipant.setName(nombre);
-      if (cargo !== (meta.cargo || '')) await room.localParticipant.setMetadata(JSON.stringify(Object.assign({}, meta, { cargo: cargo })));
+      if (misDatos.nombre !== (datos.name || '')) await r.localParticipant.setName(misDatos.nombre);
+      if (misDatos.cargo !== (meta.cargo || '')) await r.localParticipant.setMetadata(JSON.stringify(Object.assign({}, meta, { cargo: misDatos.cargo })));
     } catch (e) { /* no crítico */ }
 
     detenerMedidor();
     try {
       if (pistaAudio) {
         if (!micActivo) await pistaAudio.unmute();
-        await room.localParticipant.publishTrack(pistaAudio, { source: LK.Track.Source.Microphone });
-        if (!micActivo) await room.localParticipant.setMicrophoneEnabled(false);
+        await r.localParticipant.publishTrack(pistaAudio, { source: LK.Track.Source.Microphone });
+        if (!micActivo) await r.localParticipant.setMicrophoneEnabled(false);
       }
       if (pistaVideo) {
         if (camActiva) {
-          await room.localParticipant.publishTrack(pistaVideo, { source: LK.Track.Source.Camera, simulcast: true });
+          await r.localParticipant.publishTrack(pistaVideo, { source: LK.Track.Source.Camera, simulcast: true });
         } else {
           pistaVideo.stop();
           pistaVideo = null;
@@ -266,19 +423,19 @@
       S.aviso('No se pudo enviar tu cámara o micrófono: ' + S.mensajeDeError(err), 'error', 6000);
     }
 
+    entrando = false;
     mostrar('vistaSala');
-    $('pillEstado').classList.remove('oculto');
     pedirPantallaEncendida();
     actualizarEstado();
-    dibujarRejilla();
+    dibujarSala();
     pintarControles();
   }
 
   /* ---------------- Eventos de la sala ---------------- */
 
-  const audios = new Map(); // sid -> elemento
+  const audios = new Map(); // sid -> { pista, el }
 
-  function escucharSala() {
+  function escucharSala(r) {
     const E = LK.RoomEvent;
     let pendiente = false;
     function refrescar() {
@@ -286,7 +443,7 @@
       pendiente = true;
       requestAnimationFrame(function () {
         pendiente = false;
-        dibujarRejilla();
+        dibujarSala();
         actualizarEstado();
         pintarControles();
       });
@@ -294,16 +451,18 @@
     [E.ParticipantConnected, E.ParticipantDisconnected, E.TrackSubscribed, E.TrackUnsubscribed,
       E.TrackMuted, E.TrackUnmuted, E.LocalTrackPublished, E.LocalTrackUnpublished,
       E.ParticipantAttributesChanged, E.ParticipantNameChanged, E.ActiveSpeakersChanged,
-      E.TrackPublished, E.TrackUnpublished].forEach(function (ev) { room.on(ev, refrescar); });
+      E.TrackPublished, E.TrackUnpublished].forEach(function (ev) { r.on(ev, refrescar); });
 
-    room.on(E.TrackSubscribed, function (pista, pub) {
+    r.on(E.TrackPublished, function (pub) { try { pub.setSubscribed(true); } catch (e) { /* nada */ } });
+
+    r.on(E.TrackSubscribed, function (pista, pub) {
       if (pista.kind !== 'audio') return;
       const el = pista.attach();
       el.style.display = 'none';
       document.body.append(el);
       audios.set(pub.trackSid, { pista: pista, el: el });
     });
-    room.on(E.TrackUnsubscribed, function (pista, pub) {
+    r.on(E.TrackUnsubscribed, function (pista, pub) {
       const a = audios.get(pub.trackSid);
       if (!a) return;
       try { a.pista.detach(a.el); } catch (e) { /* nada */ }
@@ -311,50 +470,51 @@
       audios.delete(pub.trackSid);
     });
 
-    room.on(E.AudioPlaybackStatusChanged, function () {
-      if (!room.canPlaybackAudio) {
+    r.on(E.AudioPlaybackStatusChanged, function () {
+      if (!r.canPlaybackAudio) {
         S.aviso('Toca la pantalla para escuchar a los demás', 'mensaje', 5000);
-        document.addEventListener('click', function () { room.startAudio(); }, { once: true });
+        document.addEventListener('click', function () { r.startAudio(); }, { once: true });
       }
     });
 
-    room.on(E.DataReceived, function (carga, participante, tipo, tema) {
+    r.on(E.DataReceived, function (carga, participante, tipo, tema) {
       if (!participante || participante.identity !== S.ID_DIRECTOR || tema !== 'sala') return;
       let m = null;
       try { m = JSON.parse(new TextDecoder().decode(carga)); } catch (e) { return; }
       if (m.accion === 'silenciar') {
-        room.localParticipant.setMicrophoneEnabled(false).then(pintarControles);
+        r.localParticipant.setMicrophoneEnabled(false).then(pintarControles);
         S.aviso('La producción silenció tu micrófono', 'mensaje', 5000);
       } else if (m.accion === 'mensaje' && m.texto) {
         S.aviso('Producción: ' + m.texto, 'mensaje', 12000);
       } else if (m.accion === 'salir') {
         salirDeLaSala();
         error('Saliste de la sala', 'La producción terminó tu participación. ¡Gracias!');
+      } else if (m.accion === 'terminar') {
+        salirDeLaSala();
+        error('El evento terminó', '¡Gracias por participar!');
       }
     });
 
-    room.on(E.ConnectionQualityChanged, function (calidad, participante) {
-      if (participante !== room.localParticipant) return;
+    r.on(E.ConnectionQualityChanged, function (calidad, participante) {
+      if (participante !== r.localParticipant) return;
       if (calidad === LK.ConnectionQuality.Poor) S.aviso('Tu conexión está débil. Si puedes, acércate al WiFi.', 'mensaje', 5000);
     });
 
-    room.on(E.Reconnecting, function () {
-      $('franja').className = 'franja alerta';
-      $('franja').textContent = 'Reconectando… no cierres esta página.';
-    });
-    room.on(E.Reconnected, actualizarEstado);
+    r.on(E.Reconnecting, function () { pintarBarra('alerta', 'Reconectando… no cierres esta página'); });
+    r.on(E.Reconnected, actualizarEstado);
 
-    room.on(E.Disconnected, function (motivo) {
+    r.on(E.Disconnected, function (motivo) {
       apagarCamaraYMicro();
       soltarPantallaEncendida();
       if (saliendo) return;
-      if (motivo === LK.DisconnectReason.PARTICIPANT_REMOVED) {
+      const DR = LK.DisconnectReason;
+      if (motivo === DR.PARTICIPANT_REMOVED) {
         error('Saliste de la sala', 'La producción terminó tu participación. ¡Gracias!');
-      } else if (motivo === LK.DisconnectReason.DUPLICATE_IDENTITY) {
+      } else if (motivo === DR.DUPLICATE_IDENTITY) {
         error('Entraste desde otro lugar', 'Este enlace se abrió en otro dispositivo o pestaña. Usa solo uno a la vez.', true);
-      } else if (motivo === LK.DisconnectReason.ROOM_DELETED || motivo === LK.DisconnectReason.ROOM_CLOSED) {
-        error('La sala se cerró', 'El evento terminó. ¡Gracias por participar!');
-      } else if (motivo !== LK.DisconnectReason.CLIENT_INITIATED) {
+      } else if (motivo === DR.ROOM_DELETED || motivo === DR.ROOM_CLOSED) {
+        error('El evento terminó', '¡Gracias por participar!');
+      } else if (motivo !== DR.CLIENT_INITIATED) {
         error('Se cortó la conexión', 'Revisa tu internet y vuelve a entrar con el mismo enlace.', true);
       }
     });
@@ -363,45 +523,32 @@
   /* ---------------- Estado: ¿estoy al aire? ---------------- */
 
   function actualizarEstado() {
-    if (!room || saliendo || room.state === 'disconnected') return;
+    if (!room || saliendo || room.state === 'disconnected' || room.state === 'reconnecting') return;
     const estado = S.estadoDeSala(room);
     const enVivo = estado ? estado.enVivo : [];
     const camAire = enVivo.indexOf(miIdentidad + ':cam') >= 0;
     const pantallaAire = enVivo.indexOf(miIdentidad + ':pantalla') >= 0;
-    const pill = $('pillEstado');
-    const franja = $('franja');
-    if (camAire || pantallaAire) {
-      pill.className = 'pill aire'; pill.textContent = 'AL AIRE';
-      franja.className = 'franja aire';
-      franja.textContent = camAire ? 'Estás al aire: todos te ven y te escuchan.' : 'Tu pantalla está al aire.';
-    } else {
-      pill.className = 'pill'; pill.textContent = 'EN ESPERA';
-      franja.className = 'franja';
-      franja.textContent = 'En espera: la producción te pondrá al aire cuando sea tu turno. Los demás panelistas sí te escuchan.';
-    }
+    if (camAire) pintarBarra('aire', 'Todos te ven y te escuchan');
+    else if (pantallaAire) pintarBarra('aire', 'Tu pantalla está al aire');
+    else pintarBarra('espera', 'La producción te pondrá al aire');
   }
 
-  /* ---------------- Rejilla de participantes ---------------- */
+  /* ---------------- Sala: tu imagen grande, los demás pequeños ---------------- */
 
-  const tiles = new Map(); // clave -> { el, video, pista }
+  const tiles = new Map(); // clave -> { el, video, ... }
 
-  function dibujarRejilla() {
-    if (!room || saliendo) return;
-    const rejilla = $('rejilla');
+  function itemsDeSala() {
     const estado = S.estadoDeSala(room);
     const enVivo = estado ? estado.enVivo : [];
     const lista = [];
-
-    // Yo
     const yo = room.localParticipant;
     const miCam = yo.getTrackPublication(LK.Track.Source.Camera);
     lista.push({
-      clave: 'yo', nombre: (yo.name || 'Tú') + ' (tú)', yo: true,
+      clave: 'yo', nombre: 'Tú', yo: true,
       pista: miCam && miCam.track && !miCam.isMuted ? miCam.track : null,
       micOff: !yo.isMicrophoneEnabled, hablando: yo.isSpeaking,
       aire: enVivo.indexOf(miIdentidad + ':cam') >= 0,
     });
-
     room.remoteParticipants.forEach(function (p) {
       if (p.identity === S.ID_PROGRAMA) return;
       const esDirector = p.identity === S.ID_DIRECTOR;
@@ -424,31 +571,53 @@
         });
       }
     });
+    return lista;
+  }
 
+  function crearTile(clave) {
+    const el = S.crearEl('div', 'tile');
+    const ini = S.crearEl('div', 'iniciales');
+    const video = document.createElement('video');
+    video.autoplay = true; video.muted = true; video.playsInline = true;
+    const rotulo = S.crearEl('div', 'rotulo');
+    const aire = S.crearEl('div', 'marca-aire', 'AL AIRE');
+    const volver = S.crearEl('div', 'volver oculto', 'Toca para volver a verte');
+    el.append(ini, video, rotulo, aire, volver);
+    el.addEventListener('click', function () {
+      // tocar una imagen pequeña la pone en grande; tocar la grande vuelve a ti
+      principal = principal === clave ? 'yo' : clave;
+      dibujarSala();
+    });
+    return { el: el, video: video, ini: ini, rotulo: rotulo, aire: aire, volver: volver, pista: null };
+  }
+
+  function dibujarSala() {
+    if (!room || saliendo) return;
+    const lista = itemsDeSala();
+    if (!lista.some(function (x) { return x.clave === principal; })) principal = 'yo';
+    const cajaP = $('principal'), tira = $('tira');
     const vigentes = new Set();
-    lista.forEach(function (item, i) {
+    let enTira = 0;
+    lista.forEach(function (item) {
       vigentes.add(item.clave);
       let t = tiles.get(item.clave);
-      if (!t) {
-        const el = S.crearEl('div', 'tile');
-        const ini = S.crearEl('div', 'iniciales');
-        const video = document.createElement('video');
-        video.autoplay = true; video.muted = true; video.playsInline = true;
-        const rotulo = S.crearEl('div', 'rotulo');
-        const aire = S.crearEl('div', 'marca-aire', 'AL AIRE');
-        el.append(ini, video, rotulo, aire);
-        t = { el: el, video: video, ini: ini, rotulo: rotulo, aire: aire, pista: null };
-        tiles.set(item.clave, t);
+      if (!t) { t = crearTile(item.clave); tiles.set(item.clave, t); }
+      const grande = item.clave === principal;
+      const destino = grande ? cajaP : tira;
+      const pos = grande ? 0 : enTira++;
+      if (destino.children[pos] !== t.el) {
+        destino.insertBefore(t.el, destino.children[pos] || null);
+        t.video.play().catch(function () {});
       }
-      if (rejilla.children[i] !== t.el) rejilla.insertBefore(t.el, rejilla.children[i] || null);
       t.el.classList.toggle('yo', !!item.yo);
       t.el.classList.toggle('pantalla', !!item.pantalla);
       t.el.classList.toggle('hablando', !!item.hablando);
       t.el.classList.toggle('con-video', !!item.pista);
-      t.ini.textContent = S.iniciales(item.nombre.replace(' (tú)', ''));
+      t.ini.textContent = item.yo ? S.iniciales(misDatos.nombre) : S.iniciales(item.nombre);
       t.rotulo.innerHTML = (item.micOff ? S.icono('micOff') : '') + '<span></span>';
       t.rotulo.lastChild.textContent = item.nombre;
       t.aire.classList.toggle('oculto', !item.aire);
+      t.volver.classList.toggle('oculto', !(grande && !item.yo));
       if (item.pista !== t.pista) {
         if (t.pista) { try { t.pista.detach(t.video); } catch (e) { /* nada */ } }
         t.pista = item.pista;
@@ -461,27 +630,7 @@
       t.el.remove();
       tiles.delete(clave);
     });
-    ajustarRejilla();
   }
-
-  /** Elige cuántas columnas usar para que los videos se vean lo más grandes posible. */
-  function ajustarRejilla() {
-    const rejilla = $('rejilla');
-    const n = rejilla.children.length;
-    if (!n) return;
-    const sep = 12;
-    const ancho = rejilla.clientWidth;
-    const alto = Math.max(200, window.innerHeight - rejilla.getBoundingClientRect().top - 110);
-    let mejor = { cols: 1, tw: 0 };
-    for (let cols = 1; cols <= n; cols++) {
-      const filas = Math.ceil(n / cols);
-      const tw = Math.min((ancho - (cols - 1) * sep) / cols, ((alto - (filas - 1) * sep) / filas) * 16 / 9);
-      if (tw > mejor.tw) mejor = { cols: cols, tw: tw };
-    }
-    const tw = Math.max(140, Math.floor(mejor.tw));
-    rejilla.style.gridTemplateColumns = 'repeat(' + mejor.cols + ', ' + tw + 'px)';
-  }
-  window.addEventListener('resize', ajustarRejilla);
 
   /* ---------------- Controles ---------------- */
 
@@ -502,20 +651,28 @@
   $('btnMic').addEventListener('click', async function () {
     try { await room.localParticipant.setMicrophoneEnabled(!room.localParticipant.isMicrophoneEnabled); }
     catch (e) { S.aviso(S.mensajeDeError(e), 'error'); }
-    pintarControles(); dibujarRejilla();
+    pintarControles(); dibujarSala();
   });
 
   $('btnCam').addEventListener('click', async function () {
     try { await room.localParticipant.setCameraEnabled(!room.localParticipant.isCameraEnabled); }
     catch (e) { S.aviso(S.mensajeDeError(e), 'error'); }
-    pintarControles(); dibujarRejilla();
+    pintarControles(); dibujarSala();
   });
 
   $('btnPantalla').addEventListener('click', async function () {
     const activa = room.localParticipant.isScreenShareEnabled;
     try {
-      await room.localParticipant.setScreenShareEnabled(!activa, { audio: true, selfBrowserSurface: 'exclude' });
-      if (!activa) S.aviso('Compartiendo pantalla. La producción decide cuándo sale al aire.', 'ok', 5000);
+      // El navegador deja elegir: una pestaña, una ventana (PowerPoint, PDF...) o la pantalla completa
+      await room.localParticipant.setScreenShareEnabled(!activa, {
+        audio: true,
+        selfBrowserSurface: 'exclude',
+        surfaceSwitching: 'include',
+        systemAudio: 'include',
+        contentHint: 'detail',
+        resolution: { width: 1920, height: 1080, frameRate: 15 },
+      });
+      if (!activa) S.aviso('Compartiendo. La producción decide cuándo sale al aire.', 'ok', 5000);
     } catch (e) {
       if (!/NotAllowed|Permission|cancel/i.test(String(e && e.message))) S.aviso(S.mensajeDeError(e), 'error');
     }
@@ -529,7 +686,7 @@
     $('btnReintentar').textContent = 'Volver a entrar';
   });
 
-  /** Apaga cámara, micrófono y pantalla compartida para que el celular las libere. */
+  /** Apaga cámara, micrófono y pantalla compartida para que el equipo las libere. */
   function apagarCamaraYMicro() {
     if (room) {
       room.localParticipant.trackPublications.forEach(function (pub) {
@@ -569,5 +726,15 @@
   /* ---------------- Inicio ---------------- */
   mostrar('vistaLobby');
   pintarPrevios();
-  iniciarPrevia();
+  (async function () {
+    // Si ya dio permiso antes, se enciende sola; si no, mostramos el botón grande.
+    let estadoCam = 'prompt', estadoMic = 'prompt';
+    try {
+      estadoCam = (await navigator.permissions.query({ name: 'camera' })).state;
+      estadoMic = (await navigator.permissions.query({ name: 'microphone' })).state;
+    } catch (e) { /* el navegador no lo informa */ }
+    if (estadoCam === 'granted' && estadoMic === 'granted') iniciarPrevia();
+    else if (estadoCam === 'denied' && estadoMic === 'denied') mostrarCapa('bloqueo');
+    else mostrarCapa('permiso');
+  })();
 })();

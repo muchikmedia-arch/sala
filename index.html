@@ -7,14 +7,17 @@
   <title>Sala Muchik</title>
   <link rel="stylesheet" href="css/estilos.css">
 </head>
-<body>
-  <header class="barra">
+<body class="pagina-panelista">
+  <header class="barra" id="barra">
     <div class="marca-app"><span class="punto"></span><span id="nombreApp">Sala Muchik</span></div>
-    <span id="pillEstado" class="pill oculto"></span>
+    <div id="estadoBarra" class="estado-barra oculto">
+      <span id="textoEstado" class="texto-estado"></span>
+      <span id="pillEstado" class="pill"></span>
+    </div>
   </header>
 
   <main>
-    <!-- Error / enlace inválido -->
+    <!-- Error / enlace inválido / fin -->
     <section id="vistaError" class="vista oculto">
       <div class="tarjeta centro">
         <h1 id="tituloError">Enlace no válido</h1>
@@ -26,49 +29,69 @@
     <!-- Antesala: probar cámara y micrófono -->
     <section id="vistaLobby" class="vista oculto">
       <div class="lobby">
-        <div>
-          <div class="lobby-video">
-            <video id="previa" autoplay muted playsinline></video>
-            <div id="previaSin" class="previa-sin oculto">Cámara apagada</div>
-            <div class="medidor" title="Nivel del micrófono"><div id="nivel"></div></div>
-          </div>
-          <p class="suave" style="margin-top:10px;font-size:13px">Así te verán. Habla para comprobar que la barra verde se mueve.</p>
+        <div class="lobby-saludo">
+          <h1>Hola, <span id="saludo"></span></h1>
+          <p class="suave">Te invitaron a <b id="nombreEvento"></b><span id="cuandoEvento"></span></p>
         </div>
 
-        <div class="tarjeta">
-          <h1>Hola, <span id="saludo"></span></h1>
-          <p class="suave">Te invitaron a participar en <b id="nombreEvento"></b>. Revisa tu cámara y micrófono antes de entrar.</p>
+        <div class="lobby-video">
+          <video id="previa" autoplay muted playsinline></video>
+          <div id="previaSin" class="previa-sin oculto">Cámara apagada</div>
 
+          <div id="capaPermiso" class="capa-permiso oculto">
+            <p>Para que te vean y te escuchen, activa tu cámara y tu micrófono.</p>
+            <button id="btnActivar" class="btn primario grande" type="button">Activar cámara y micrófono</button>
+            <p class="chico">Cuando el navegador te pregunte, toca <b>Permitir</b>.</p>
+          </div>
+
+          <div id="capaBloqueo" class="capa-permiso oculto">
+            <p><b>La cámara o el micrófono están bloqueados.</b></p>
+            <ol>
+              <li>Toca el ícono que está a la izquierda de la dirección de la página (arriba).</li>
+              <li>Entra a <b>Permisos</b> y activa <b>Cámara</b> y <b>Micrófono</b>.</li>
+              <li>Toca el botón <b>Recargar</b>.</li>
+            </ol>
+            <button id="btnRecargar" class="btn primario" type="button">Recargar</button>
+          </div>
+
+          <div class="medidor" title="Nivel del micrófono"><div id="nivel"></div></div>
+          <div class="previa-controles">
+            <button id="btnPreCam" class="btn redondo" type="button"></button>
+            <button id="btnPreMic" class="btn redondo" type="button"></button>
+          </div>
+        </div>
+
+        <button id="btnEntrar" class="btn primario grande btn-entrar" type="button">Entrar a la sala</button>
+        <div id="avisoEntrada" class="aviso-entrada oculto"></div>
+        <p id="lobbyError" class="error"></p>
+
+        <p class="entrar-como">Entrarás como <b id="comoNombre"></b><span id="comoCargo"></span>
+          <button id="btnCambiarDatos" class="enlace" type="button">Cambiar</button></p>
+
+        <div id="cajaDatos" class="tarjeta oculto">
           <label>Tu nombre (así aparecerá en pantalla)
             <input id="inNombre" maxlength="60" autocomplete="name">
           </label>
           <label>Cargo o institución
             <input id="inCargo" maxlength="80">
           </label>
-          <label>Cámara
-            <select id="selCam"></select>
-          </label>
-          <label>Micrófono
-            <select id="selMic"></select>
-          </label>
-
-          <div class="fila" style="margin-bottom:12px">
-            <button id="btnPreCam" class="btn" type="button"></button>
-            <button id="btnPreMic" class="btn" type="button"></button>
-          </div>
-
-          <p class="consejo"><span id="icoAudifonos"></span><span>Usa audífonos para evitar eco, busca un lugar con luz de frente y silencio. Si estás en celular, ponlo en horizontal.</span></p>
-
-          <button id="btnEntrar" class="btn primario grande" type="button">Entrar a la sala</button>
-          <p id="lobbyError" class="error" style="margin-top:10px"></p>
+          <button id="btnGuardarDatos" class="btn" type="button">Listo</button>
         </div>
+
+        <details class="tarjeta ajustes">
+          <summary>Cambiar cámara o micrófono</summary>
+          <label>Cámara <select id="selCam"></select></label>
+          <label>Micrófono <select id="selMic"></select></label>
+        </details>
+
+        <p class="consejo"><span id="icoAudifonos"></span><span>Usa audífonos para evitar eco y busca un lugar con luz de frente y en silencio.</span></p>
       </div>
     </section>
 
     <!-- Sala -->
-    <section id="vistaSala" class="vista oculto">
-      <div id="franja" class="franja">En espera: la producción te pondrá al aire cuando sea tu turno.</div>
-      <div id="rejilla" class="rejilla"></div>
+    <section id="vistaSala" class="sala oculto">
+      <div id="principal" class="sala-principal"></div>
+      <div id="tira" class="sala-tira"></div>
       <nav class="controles">
         <button id="btnMic" class="btn" type="button"></button>
         <button id="btnCam" class="btn" type="button"></button>

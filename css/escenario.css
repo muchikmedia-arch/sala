@@ -32,9 +32,22 @@
   object-fit: cover;
   background: transparent;
 }
+.esc-rec .esc-fondo { display: none; }
 .esc-rec.pantalla { background: #000; }
-.esc-rec.pantalla video { object-fit: contain; }
+.esc-rec.pantalla .esc-video { object-fit: contain; }
 .esc-rec.sin-video video { visibility: hidden; }
+
+/* Celular en vertical: se ve la imagen completa */
+.esc.v-difuminado .esc-rec.vertical:not(.pantalla) .esc-fondo {
+  display: block;
+  object-fit: cover;
+  filter: blur(26px) brightness(.55) saturate(1.1);
+  transform: scale(1.2);
+}
+.esc.v-difuminado .esc-rec.vertical:not(.pantalla) .esc-video,
+.esc.v-oscuro .esc-rec.vertical:not(.pantalla) .esc-video { object-fit: contain; }
+.esc.v-oscuro .esc-rec.vertical:not(.pantalla) { background: #0b0d10; }
+.esc.v-recortar .esc-rec.vertical:not(.pantalla) .esc-video { object-position: 50% 28%; }
 .esc-rec::after {
   content: "";
   position: absolute; inset: 0;

@@ -11,9 +11,16 @@
     urlPublica: '',
     nombrePlataforma: 'Sala Muchik',
     credito: 'Muchik Media | Apps',
+    web: '',
+    ciudad: '',
     colorMarca: '#e3001b',
     colorFondo: '#0f1419',
   }, window.SALA_CONFIG || {});
+
+  /** "Desarrollado por Muchik Media | Apps · www.muchikmedia.com · Trujillo - Perú" */
+  function textoCredito() {
+    return ['Desarrollado por ' + CFG.credito, CFG.web, CFG.ciudad].filter(Boolean).join('  ·  ');
+  }
 
   const ID_DIRECTOR = 'director';
   const ID_PROGRAMA = 'programa';
@@ -117,9 +124,8 @@
     const payload = {
       iss: o.apiKey,
       sub: o.identidad,
-      jti: o.identidad + '-' + ahora + '-' + aleatorio(4),
-      nbf: ahora - 120,
-      exp: ahora + Math.round((o.horas || 24) * 3600),
+      nbf: o.nbf ? Math.floor(o.nbf) : ahora - 120,
+      exp: o.exp ? Math.floor(o.exp) : ahora + Math.round((o.horas || 24) * 3600),
       name: o.nombre || o.identidad,
       video: Object.assign({ room: o.sala, roomJoin: true }, o.permisos || {}),
     };
@@ -150,7 +156,8 @@
       v: 1,
       enVivo: [],          // claves al aire: "identidad:cam" o "identidad:pantalla"
       destacado: null,     // clave destacada
-      diseno: 'auto',      // auto | cuadricula | destacado | solo
+      diseno: 'auto',      // auto | cuadricula | destacado | solo | presentacion | pantalla | esquina | mitad
+      vertical: 'difuminado', // celulares en vertical: difuminado | oscuro | recortar
       nombres: true,       // nombre dentro de cada recuadro
       resaltar: true,      // borde en quien habla
       titulo: '', mostrarTitulo: false,
@@ -194,22 +201,25 @@
     const et = (estado && estado.etiquetas && estado.etiquetas[p.identity]) || {};
     const meta = leerMeta(p.metadata);
     return {
-      nombre: et.nombre || p.name || p.identity,
+      nombre: et.nombre || (p.identity === ID_DIRECTOR ? 'Producción' : (p.name || p.identity)),
       cargo: et.cargo != null && et.cargo !== '' ? et.cargo : (meta.cargo || ''),
     };
   }
 
   /**
    * Arma la lista de "fuentes" (cámaras y pantallas compartidas) a partir
-   * de los participantes de la sala. Cada fuente:
-   * { clave, identidad, tipo, nombre, cargo, pista, hablando, conectada }
+   * de los participantes de la sala. Incluye al director (solo sale al aire
+   * si él mismo se pone al aire). Cada fuente:
+   * { clave, identidad, tipo, nombre, cargo, pista, hablando }
    */
   function fuentesDeSala(room, estado) {
     const LK = window.LivekitClient;
     const mapa = new Map();
     if (!room) return mapa;
-    for (const p of room.remoteParticipants.values()) {
-      if (!esParticipanteDeEscena(p)) continue;
+    const lista = Array.from(room.remoteParticipants.values());
+    if (room.localParticipant && room.localParticipant.identity === ID_DIRECTOR) lista.unshift(room.localParticipant);
+    lista.forEach(function (p) {
+      if (!p || p.identity === ID_PROGRAMA) return;
       const n = nombreDe(p, estado);
       const cam = p.getTrackPublication(LK.Track.Source.Camera);
       mapa.set(p.identity + ':cam', {
@@ -233,7 +243,7 @@
           hablando: false,
         });
       }
-    }
+    });
     return mapa;
   }
 
@@ -262,11 +272,7 @@
       const tw = Math.min((area.w - (cols - 1) * SEP) / cols, ((area.h - (filas - 1) * SEP) / filas) * PROP);
       if (!mejor || tw > mejor.tw) mejor = { cols: cols, filas: filas, tw: tw };
     }
-    const tw = mejor.tw;
-    // Si sobra alto (por ejemplo, 2 personas lado a lado), los recuadros crecen hacia
-    // arriba y abajo hasta ser cuadrados: la cámara se recorta a los lados, como en la TV.
-    const altoFila = (area.h - (mejor.filas - 1) * SEP) / mejor.filas;
-    const th = Math.max(tw / PROP, Math.min(altoFila, tw));
+    const tw = mejor.tw, th = tw / PROP; // siempre horizontal 16:9
     const altoTotal = mejor.filas * th + (mejor.filas - 1) * SEP;
     const y0 = area.y + (area.h - altoTotal) / 2;
     const rects = [];
@@ -301,34 +307,75 @@
     return { principal: principal, lateral: lateral };
   }
 
+  function centrado(t, area) {
+    return { x: area.x + (area.w - t.w) / 2, y: area.y + (area.h - t.h) / 2, w: t.w, h: t.h };
+  }
+
+  function esPantalla(c) { return /:pantalla$/.test(c); }
+
+  /** Elige el recuadro principal. Con prioridad 'pantalla', la pantalla compartida va primero. */
+  function elegirPrincipal(items, estado, prioridad) {
+    const dest = estado.destacado && items.indexOf(estado.destacado) >= 0 ? estado.destacado : null;
+    if (prioridad === 'pantalla') {
+      if (dest && esPantalla(dest)) return dest;
+      return items.find(esPantalla) || dest || items[0];
+    }
+    return dest || items.find(esPantalla) || items[0];
+  }
+
   /** Devuelve [{clave, x, y, w, h, principal}] según el estado y las fuentes conectadas. */
   function calcularDiseno(estado, fuentes) {
     const items = (estado.enVivo || []).filter(function (c) { return fuentes.has(c); });
     if (!items.length) return [];
     const area = areaUtil(estado);
     let modo = estado.diseno || 'auto';
-    let principal = estado.destacado && items.indexOf(estado.destacado) >= 0 ? estado.destacado : null;
+    if (modo === 'auto') modo = items.some(esPantalla) ? 'presentacion' : 'cuadricula';
 
-    if (modo === 'auto') {
-      const pantalla = items.find(function (c) { return /:pantalla$/.test(c); });
-      if (pantalla) { modo = 'destacado'; principal = principal || pantalla; }
-      else modo = 'cuadricula';
-    }
-    if (modo === 'solo') {
-      const c = principal || items[0];
-      const r = principalYLateral(0, area).principal;
-      return [Object.assign({ clave: c, principal: true }, r)];
-    }
-    if (modo === 'destacado' && items.length > 1) {
-      const c = principal || items.find(function (x) { return /:pantalla$/.test(x); }) || items[0];
+    function uno(c) { return [Object.assign({ clave: c, principal: true }, centrado(encajar(area.w, area.h), area))]; }
+
+    if (modo === 'solo') return uno(elegirPrincipal(items, estado));
+    if (modo === 'pantalla') return uno(elegirPrincipal(items, estado, 'pantalla'));
+    if (items.length === 1) return uno(items[0]);
+
+    if (modo === 'destacado' || modo === 'presentacion') {
+      const c = elegirPrincipal(items, estado, modo === 'presentacion' ? 'pantalla' : null);
       const resto = items.filter(function (x) { return x !== c; });
       const d = principalYLateral(resto.length, area);
       const salida = [Object.assign({ clave: c, principal: true }, d.principal)];
       resto.forEach(function (x, i) { salida.push(Object.assign({ clave: x, principal: false }, d.lateral[i])); });
       return salida;
     }
+
+    if (modo === 'esquina') {
+      // principal a pantalla completa y una cámara pequeña en la esquina inferior derecha
+      const c = elegirPrincipal(items, estado, 'pantalla');
+      const resto = items.filter(function (x) { return x !== c; });
+      const otra = (estado.destacado && resto.indexOf(estado.destacado) >= 0 ? estado.destacado : null) ||
+        resto.find(function (x) { return !esPantalla(x); }) || resto[0];
+      const m = centrado(encajar(area.w, area.h), area);
+      const w = 440, h = w / PROP;
+      return [
+        Object.assign({ clave: c, principal: true }, m),
+        { clave: otra, principal: false, x: m.x + m.w - w - 24, y: m.y + m.h - h - 24, w: w, h: h },
+      ];
+    }
+
+    if (modo === 'mitad') {
+      // principal en la mitad izquierda y los demás en la mitad derecha
+      const c = elegirPrincipal(items, estado, 'pantalla');
+      const resto = items.filter(function (x) { return x !== c; });
+      const mitadW = (area.w - SEP) / 2;
+      const izq = { x: area.x, y: area.y, w: mitadW, h: area.h };
+      const der = { x: area.x + mitadW + SEP, y: area.y, w: mitadW, h: area.h };
+      const salida = [Object.assign({ clave: c, principal: true }, centrado(encajar(izq.w, izq.h), izq))];
+      cuadricula(resto.length, der).forEach(function (r, i) {
+        salida.push(Object.assign({ clave: resto[i], principal: resto.length === 1 }, r));
+      });
+      return salida;
+    }
+
     return cuadricula(items.length, area).map(function (r, i) {
-      return Object.assign({ clave: items[i], principal: items.length === 1 }, r);
+      return Object.assign({ clave: items[i], principal: false }, r);
     });
   }
 
@@ -374,6 +421,7 @@
       r.style.background = e.colorFondo || CFG.colorFondo;
     }
     r.classList.toggle('sin-nombres', !e.nombres);
+    ['difuminado', 'oscuro', 'recortar'].forEach(function (v) { r.classList.toggle('v-' + v, (e.vertical || 'difuminado') === v); });
 
     // Título
     const verTitulo = !!(e.mostrarTitulo && e.titulo);
@@ -452,9 +500,10 @@
       rec.avatar.textContent = iniciales(f.nombre);
       // Video
       if (f.pista !== rec.pista) {
-        if (rec.pista) { try { rec.pista.detach(rec.video); } catch (e) { /* nada */ } }
+        soltarPista(rec);
         rec.pista = f.pista;
-        if (f.pista) f.pista.attach(rec.video);
+        if (f.pista) { f.pista.attach(rec.video); f.pista.attach(rec.fondo); }
+        else rec.el.classList.remove('vertical');
       }
       rec.el.classList.toggle('sin-video', !f.pista);
     });
@@ -464,7 +513,7 @@
       if (activos.has(clave) || rec.quitar) return;
       rec.el.classList.remove('visible');
       rec.quitar = setTimeout(function () {
-        if (rec.pista) { try { rec.pista.detach(rec.video); } catch (e) { /* nada */ } }
+        soltarPista(rec);
         rec.pista = null;
         rec.el.remove();
         self.recuadros.delete(clave);
@@ -472,20 +521,35 @@
     });
   };
 
+  function soltarPista(rec) {
+    if (!rec.pista) return;
+    try { rec.pista.detach(rec.video); } catch (e) { /* nada */ }
+    try { rec.pista.detach(rec.fondo); } catch (e) { /* nada */ }
+  }
+
   Escenario.prototype._crearRecuadro = function (d) {
     const el = crearEl('div', 'esc-rec');
     el.style.left = d.x + 'px'; el.style.top = d.y + 'px';
     el.style.width = d.w + 'px'; el.style.height = d.h + 'px';
-    const video = crearEl('video');
-    video.autoplay = true; video.muted = true; video.playsInline = true;
-    video.setAttribute('playsinline', '');
+    function nuevoVideo(clase) {
+      const v = crearEl('video', clase);
+      v.autoplay = true; v.muted = true; v.playsInline = true;
+      v.setAttribute('playsinline', '');
+      return v;
+    }
+    const fondo = nuevoVideo('esc-fondo');   // copia difuminada para celulares en vertical
+    const video = nuevoVideo('esc-video');
+    // ¿La imagen llega en vertical (celular parado)?
+    function revisarForma() { el.classList.toggle('vertical', video.videoHeight > video.videoWidth * 1.05); }
+    video.addEventListener('resize', revisarForma);
+    video.addEventListener('loadedmetadata', revisarForma);
     const avatar = crearEl('div', 'esc-avatar');
     const etiqueta = crearEl('div', 'esc-etiqueta');
     const nombre = crearEl('div', 'esc-nombre');
     const cargo = crearEl('div', 'esc-cargo');
     etiqueta.append(nombre, cargo);
-    el.append(avatar, video, etiqueta);
-    return { el: el, video: video, avatar: avatar, etiqueta: etiqueta, nombre: nombre, cargo: cargo, pista: null, quitar: null };
+    el.append(avatar, fondo, video, etiqueta);
+    return { el: el, video: video, fondo: fondo, avatar: avatar, etiqueta: etiqueta, nombre: nombre, cargo: cargo, pista: null, quitar: null };
   };
 
   /** Ajusta el escenario de 1920x1080 al tamaño del contenedor. */
@@ -594,6 +658,7 @@
     escalarAlContenedor: escalarAlContenedor,
     opcionesSala: opcionesSala,
     mensajeDeError: mensajeDeError,
+    textoCredito: textoCredito,
     aviso: aviso,
     icono: icono,
   };

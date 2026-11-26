@@ -15,6 +15,8 @@ window.SALA_CONFIG = {
 
   nombrePlataforma: 'Sala Muchik',
   credito: 'Muchik Media | Apps',
+  web: 'www.muchikmedia.com',
+  ciudad: 'Trujillo - Perú',
 
   // Colores por defecto de los gráficos (luego se cambian desde el panel)
   colorMarca: '#e3001b',

@@ -12,8 +12,9 @@
   <header class="barra">
     <div class="marca-app"><span class="punto"></span><span id="nombreApp">Sala Muchik</span> <small>Panel del director</small></div>
     <div class="fila" style="flex:0 0 auto">
-      <span id="pillConexion" class="pill">Desconectado</span>
-      <button id="btnConectar" class="btn primario" type="button">Conectar al panel</button>
+      <span id="pillConexion" class="pill">Sala cerrada</span>
+      <button id="btnTerminar" class="btn peligro oculto" type="button">Terminar evento</button>
+      <button id="btnConectar" class="btn primario" type="button">Abrir sala</button>
     </div>
   </header>
 
@@ -34,19 +35,34 @@
       </details>
 
       <section class="seccion">
-        <h2><span id="icoSala"></span>Sala del evento</h2>
+        <h2><span id="icoSala"></span>Evento</h2>
+        <label>Título del evento
+          <input id="inTitulo" type="text" maxlength="90" placeholder="Ej.: Conversatorio sobre educación rural">
+        </label>
+        <label>Fecha y hora
+          <input id="inFecha" type="datetime-local">
+        </label>
+        <label>Los invitados pueden entrar
+          <select id="selAntes">
+            <option value="15">Desde 15 minutos antes</option>
+            <option value="30" selected>Desde 30 minutos antes</option>
+            <option value="60">Desde 1 hora antes</option>
+            <option value="-1">En cualquier momento</option>
+          </select>
+        </label>
+        <p class="ayuda" id="ayudaHorario">Antes de esa hora no podrán conectarse (no gastan nada). Y aunque sea la hora, solo entran cuando tú abres la sala.</p>
         <label>Nombre de la sala
           <input id="inSala" type="text" maxlength="60" spellcheck="false">
         </label>
-        <p class="ayuda">Usa un nombre por evento (ej.: debate-educacion). Si lo cambias, los enlaces anteriores dejan de servir.</p>
+        <p class="ayuda">Un nombre por evento (ej.: debate-educacion). Si lo cambias, los enlaces anteriores dejan de servir.</p>
         <p id="avisoArchivo" class="consejo oculto"></p>
       </section>
 
       <section class="seccion">
         <h2><span id="icoInvitados"></span>Invitados</h2>
-        <label>Nombre <input id="inInvNombre" type="text" maxlength="60" placeholder="Ej.: Rosa Quispe"></label>
-        <label>Cargo o institución <input id="inInvCargo" type="text" maxlength="80" placeholder="Ej.: Directora UGEL Trujillo"></label>
-        <label>El enlace sirve por
+        <label>Nombre <input id="inInvNombre" type="text" maxlength="60" placeholder="Ej.: Alberto Quispe"></label>
+        <label>Cargo o institución <input id="inInvCargo" type="text" maxlength="80" placeholder="Ej.: Director UGEL Trujillo"></label>
+        <label id="filaVigencia">El enlace sirve por
           <select id="selVigencia">
             <option value="24">1 día</option>
             <option value="72">3 días</option>
@@ -54,8 +70,15 @@
             <option value="720">30 días</option>
           </select>
         </label>
-        <button id="btnCrearInvitado" class="btn primario" type="button" style="width:100%;margin-bottom:12px">Crear enlace de invitado</button>
+        <label class="check"><input id="chkAcortar" type="checkbox"> Enlaces cortos (usa el servicio gratuito is.gd)</label>
+        <button id="btnCrearInvitado" class="btn primario" type="button" style="width:100%;margin:6px 0 12px">Crear enlace de invitado</button>
         <div id="listaInvitados"></div>
+        <details class="sub-seccion">
+          <summary>Mensaje de invitación (WhatsApp)</summary>
+          <textarea id="inPlantilla" rows="6" spellcheck="true"></textarea>
+          <p class="ayuda" style="margin:6px 0 0">Se reemplazan solos: {nombre} {evento} {cuando} {enlace}</p>
+          <button id="btnPlantillaOriginal" class="btn chico" type="button" style="margin-top:8px">Volver al mensaje original</button>
+        </details>
       </section>
 
       <section class="seccion">
@@ -79,6 +102,10 @@
           <button class="btn" data-diseno="cuadricula" type="button"><span class="mini"><i style="left:3px;top:3px;width:21px;height:11px"></i><i style="left:28px;top:3px;width:21px;height:11px"></i><i style="left:3px;top:16px;width:21px;height:11px"></i><i style="left:28px;top:16px;width:21px;height:11px"></i></span>Cuadrícula</button>
           <button class="btn" data-diseno="destacado" type="button"><span class="mini"><i style="left:3px;top:3px;width:33px;height:24px"></i><i style="left:39px;top:3px;width:11px;height:7px"></i><i style="left:39px;top:12px;width:11px;height:7px"></i></span>Destacado</button>
           <button class="btn" data-diseno="solo" type="button"><span class="mini"><i style="left:3px;top:3px;width:47px;height:24px"></i></span>Solo uno</button>
+          <button class="btn" data-diseno="presentacion" type="button"><span class="mini mini-pantalla"><i class="p" style="left:3px;top:3px;width:33px;height:24px"></i><i style="left:39px;top:3px;width:11px;height:7px"></i><i style="left:39px;top:12px;width:11px;height:7px"></i></span>Presentación</button>
+          <button class="btn" data-diseno="pantalla" type="button"><span class="mini mini-pantalla"><i class="p" style="left:3px;top:3px;width:47px;height:24px"></i></span>Solo pantalla</button>
+          <button class="btn" data-diseno="esquina" type="button"><span class="mini mini-pantalla"><i class="p" style="left:3px;top:3px;width:47px;height:24px"></i><i style="left:35px;top:17px;width:13px;height:8px;opacity:1"></i></span>Pantalla + esquina</button>
+          <button class="btn" data-diseno="mitad" type="button"><span class="mini mini-pantalla"><i class="p" style="left:3px;top:6px;width:22px;height:17px"></i><i style="left:28px;top:6px;width:22px;height:17px"></i></span>Mitad y mitad</button>
         </div>
         <div class="fila" style="margin-top:10px">
           <button id="btnTodosFuera" class="btn chico" type="button">Quitar a todos del aire</button>
@@ -89,7 +116,7 @@
       <section class="seccion">
         <h2><span id="icoPersonas"></span>En la sala <span id="contador" class="suave" style="font-weight:500;font-size:13px"></span></h2>
         <div id="participantes" class="participantes"></div>
-        <div id="sinParticipantes" class="vacio">Conéctate al panel y envía los enlaces a tus invitados. Aquí aparecerán cuando entren.</div>
+        <div id="sinParticipantes" class="vacio"></div>
       </section>
     </div>
 
@@ -97,21 +124,18 @@
     <div class="columna">
       <section class="seccion">
         <h2><span id="icoRetorno"></span>Retorno</h2>
-        <p class="ayuda">Para hablar con los panelistas fuera del aire. Lo que envíes aquí no sale en el programa.</p>
+        <p class="ayuda" id="ayudaRetorno">Tu voz solo la escuchan los panelistas: no sale en la transmisión. Úsalo para avisarles cuándo empiezan.</p>
         <div class="retorno">
           <button id="btnHablar" class="btn" type="button"></button>
           <button id="btnMiCam" class="btn" type="button"></button>
           <button id="btnEscuchar" class="btn" type="button"></button>
         </div>
-        <p class="ayuda" style="margin:10px 0 0">Usa audífonos: si los parlantes suenan cerca del micrófono de OBS habrá eco.</p>
+        <p class="ayuda" style="margin:10px 0 0">Usa audífonos: si los parlantes suenan cerca de tu micrófono habrá eco. Para salir tú en la transmisión, usa "Ponerme al aire" en tu tarjeta.</p>
       </section>
 
       <details class="seccion" open>
         <summary><span id="icoCintillo"></span>Textos en pantalla</summary>
-        <label>Título del evento
-          <input id="inTitulo" type="text" maxlength="90" placeholder="Ej.: Conversatorio sobre educación rural">
-        </label>
-        <label class="check"><input id="chkTitulo" type="checkbox"> Mostrar título arriba</label>
+        <label class="check"><input id="chkTitulo" type="checkbox"> Mostrar el título del evento arriba</label>
 
         <label style="margin-top:14px">Cintillo grande (abajo)
           <input id="inCtTitulo" type="text" maxlength="60" placeholder="Nombre o tema">
@@ -129,7 +153,14 @@
       </details>
 
       <details class="seccion">
-        <summary><span id="icoMarca"></span>Logo y colores</summary>
+        <summary><span id="icoMarca"></span>Imagen, logo y colores</summary>
+        <label>Celulares en vertical
+          <select id="selVertical">
+            <option value="difuminado">Imagen completa con fondo difuminado</option>
+            <option value="oscuro">Imagen completa con fondo oscuro</option>
+            <option value="recortar">Recortar (se ve más cerca)</option>
+          </select>
+        </label>
         <label>Logo (dirección de la imagen)
           <input id="inLogo" type="text" spellcheck="false" placeholder="img/logo.png">
         </label>
@@ -144,7 +175,7 @@
         <label class="check"><input id="chkTransparente" type="checkbox"> Fondo transparente (usar el fondo de mi escena en OBS)</label>
       </details>
 
-      <p class="credito" style="padding:0"><a href="https://cloud.livekit.io" target="_blank" rel="noopener">Ver consumo en LiveKit Cloud</a><br><span id="credito"></span></p>
+      <p class="credito" style="padding:0"><a href="https://cloud.livekit.io" target="_blank" rel="noopener">Ver consumo en LiveKit Cloud (Settings &gt; Billing)</a><br><span id="credito"></span></p>
     </div>
   </main>
 

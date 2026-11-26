@@ -36,49 +36,56 @@ QUÉ HAY EN ESTA CARPETA
   2. En "Claves del proyecto" pega tu API Key y tu API Secret
      (las del Bloc de notas) y pulsa "Guardar claves".
      Se guardan solo en ese navegador de tu PC.
-  3. Pulsa "Conectar al panel" (arriba a la derecha).
+  3. El día del evento pulsa "Abrir sala" (arriba a la derecha).
 
 
 3) ANTES DE CADA EVENTO
 -----------------------
-  1. Sala del evento: ponle un nombre (ej.: debate-educacion).
-  2. Textos en pantalla: escribe el título del evento.
-  3. Invitados: escribe nombre y cargo, pulsa "Crear enlace de invitado"
-     y envíalo con el botón WhatsApp. Un enlace por persona.
-  4. Enlace para OBS: copia el enlace.
+  1. Evento: escribe el título, la fecha y la hora, y desde cuándo
+     pueden entrar los invitados (por ejemplo, 30 minutos antes).
+     Antes de esa hora los enlaces no funcionan: no se gasta nada.
+  2. Invitados: escribe nombre y cargo y pulsa "Crear enlace de invitado".
+     Con "Enlaces cortos" marcado, el enlace queda así: is.gd/AlbertoQuispe_x7k
+     El botón WhatsApp arma el mensaje con su nombre, el día y la hora.
+     El mensaje se puede cambiar en "Mensaje de invitación".
+  3. Enlace para OBS: cópialo y pégalo en OBS (ver punto 4).
 
 
 4) EN OBS
 ---------
   1. Fuentes > + > Navegador.
-  2. URL: pega el enlace para OBS.
-  3. Ancho 1920 · Alto 1080.
-  4. Marca "Controlar audio mediante OBS" (así el audio de los
-     panelistas aparece en tu mezclador de OBS).
+  2. URL: pega el enlace para OBS.  Ancho 1920 · Alto 1080.
+  3. Marca "Controlar audio mediante OBS".
+  4. Marca también "Apagar la fuente cuando no esté visible" y
+     "Actualizar el navegador cuando la escena se active".
   5. Transmite como siempre (a Restream o directo a las redes).
-  Encima puedes poner tus escenas de siempre: portada, música, etc.
 
 
-5) DURANTE EL EVENTO
+5) EL DÍA DEL EVENTO
 --------------------
-  - "Poner al aire" / "Quitar del aire" en cada invitado.
-  - Diseños: Automático, Cuadrícula, Destacado, Solo uno.
-  - Estrella: destaca a alguien (recuadro grande).
-  - Botón de cintillo en cada invitado: muestra su nombre y cargo en grande.
-  - Silenciar, enviar mensaje, corregir nombre o sacar de la sala.
-  - Retorno: hablar a los panelistas sin que salga al aire.
-  - Si alguien comparte pantalla aparece una tarjeta aparte "Pantalla de...".
-    Ponla al aire y en modo Automático se ve en grande.
+  - "Abrir sala" (arriba): recién ahí los invitados pueden entrar.
+    Si alguien entra antes, su página espera sola hasta que abras.
+  - Todos entran EN ESPERA. Tú decides quién sale al aire.
+  - Escenas: Automático, Cuadrícula, Destacado, Solo uno, Presentación,
+    Solo pantalla, Pantalla + esquina y Mitad y mitad.
+  - Celulares en vertical: se ve la persona completa con fondo
+    difuminado (se cambia en "Imagen, logo y colores").
+  - Retorno > "Hablar a panelistas": tu voz la escuchan solo ellos,
+    NO sale en la transmisión. Ideal para avisarles cuándo empiezan.
+  - Tu tarjeta "Tú (Producción)" > "Ponerme al aire": tu cámara y tu
+    voz salen en vivo, como un panelista más.
+  - "Terminar evento": saca a todos (invitados y OBS) y la plataforma
+    deja de consumir.
 
-  USA AUDÍFONOS en tu PC: si los parlantes suenan cerca del micrófono
-  de OBS, habrá eco.
+  USA AUDÍFONOS en tu PC: si los parlantes suenan cerca del micrófono,
+  habrá eco.
 
 
 6) PLAN GRATIS DE LIVEKIT
 -------------------------
   Incluye aprox. 5,000 minutos de conexión y 50 GB al mes.
   Un evento de 2 horas con 5 panelistas gasta unos 13 GB.
-  Revisa el consumo en cloud.livekit.io (Usage and limits) antes de
+  Revisa el consumo en cloud.livekit.io (Settings > Billing) antes de
   cada evento. Si se pasa el límite, ya no entran conexiones nuevas.
 
 

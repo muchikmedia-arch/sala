@@ -88,7 +88,7 @@ a { color: #ff6b7a; }
 
 label { display: block; margin-bottom: 12px; font-size: 13px; color: var(--suave); font-weight: 600; }
 label > input, label > select, label > textarea { margin-top: 5px; }
-input[type=text], input[type=password], input[type=url], input:not([type]), select, textarea {
+input[type=text], input[type=password], input[type=url], input[type=datetime-local], input:not([type]), select, textarea {
   width: 100%;
   padding: 9px 11px;
   border: 1px solid var(--borde); border-radius: 8px;
@@ -134,45 +134,76 @@ input[type=color] { width: 44px; height: 34px; padding: 2px; border: 1px solid v
 /* =========================================================== */
 /* Página del panelista                                         */
 /* =========================================================== */
-.vista { padding: 18px; }
+.vista { padding: 16px; }
 .centro { max-width: 520px; margin: 8vh auto; text-align: center; }
 
-.lobby {
-  display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(300px, 1fr); gap: 20px;
-  max-width: 1100px; margin: 0 auto; align-items: start;
-}
+/* Estado en la barra fija */
+.estado-barra { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.texto-estado { font-size: 13px; color: var(--suave); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.barra.al-aire { background: var(--marca); border-bottom-color: var(--marca-osc); }
+.barra.al-aire .marca-app .punto { background: #fff; box-shadow: none; }
+.barra.al-aire .texto-estado { color: #fff; font-weight: 600; }
+.barra.al-aire .pill.aire { background: #fff; color: var(--marca); }
+.barra.alerta .texto-estado { color: #f6cf7a; }
+
+/* Antesala */
+.lobby { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.lobby-saludo h1 { font-size: 22px; margin-bottom: 2px; }
+.lobby-saludo p { margin: 0; }
 .lobby-video {
-  position: relative; aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden;
-  background: #000; border: 1px solid var(--borde);
+  position: relative; border-radius: 14px; overflow: hidden;
+  background: #05070a; border: 1px solid var(--borde);
+  height: min(42vh, 360px);
+  display: flex; align-items: center; justify-content: center;
 }
-.lobby-video video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); display: block; }
-.previa-sin {
-  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  color: var(--suave); font-weight: 600; background: #11151b;
+.lobby-video video { width: 100%; height: 100%; object-fit: contain; transform: scaleX(-1); display: block; }
+.previa-sin, .capa-permiso {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; padding: 18px; text-align: center; background: #11151b;
 }
-.medidor { position: absolute; left: 14px; right: 14px; bottom: 14px; height: 8px; border-radius: 4px; background: rgba(0, 0, 0, .55); overflow: hidden; }
+.previa-sin { color: var(--suave); font-weight: 600; }
+.capa-permiso p { margin: 0; }
+.capa-permiso .chico { font-size: 13px; color: var(--suave); }
+.capa-permiso ol { text-align: left; margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.5; }
+.capa-permiso .btn.grande { width: auto; }
+.medidor { position: absolute; left: 14px; right: 110px; bottom: 18px; height: 8px; border-radius: 4px; background: rgba(0, 0, 0, .55); overflow: hidden; }
 .medidor div { height: 100%; width: 0; background: var(--ok); transition: width .08s linear; }
+.previa-controles { position: absolute; right: 10px; bottom: 8px; display: flex; gap: 8px; }
+.btn.redondo { width: 44px; height: 44px; padding: 0; border-radius: 50%; background: rgba(0, 0, 0, .6); border-color: rgba(255, 255, 255, .2); }
+.btn.redondo .ico { width: 20px; height: 20px; }
+.btn.redondo.apagado { background: var(--marca); border-color: var(--marca); }
+.btn-entrar { font-size: 18px; padding: 15px 20px; }
+.aviso-entrada {
+  padding: 12px 14px; border-radius: 10px; text-align: center;
+  background: rgba(242, 165, 22, .12); border: 1px solid rgba(242, 165, 22, .35); color: #f6cf7a;
+}
+.aviso-entrada .btn { margin-top: 8px; }
+.entrar-como { margin: 0; text-align: center; color: var(--suave); font-size: 14px; }
+.entrar-como b { color: var(--texto); }
+.enlace { background: none; border: 0; padding: 0 4px; color: #ff6b7a; font: inherit; text-decoration: underline; cursor: pointer; }
+.tarjeta.ajustes { padding: 12px 16px; }
+.tarjeta.ajustes summary { cursor: pointer; color: var(--suave); font-weight: 600; font-size: 14px; }
+.tarjeta.ajustes[open] summary { margin-bottom: 12px; }
 .consejo {
-  display: flex; gap: 10px; align-items: flex-start;
+  display: flex; gap: 10px; align-items: flex-start; margin: 0;
   padding: 10px 12px; border-radius: 8px;
   background: rgba(242, 165, 22, .1); color: #f6cf7a; font-size: 13px;
 }
 .consejo .ico { margin-top: 1px; }
 
-.franja {
-  max-width: 1300px; margin: 0 auto 14px;
-  padding: 10px 14px; border-radius: 10px; text-align: center; font-weight: 700;
-  background: var(--panel2); color: var(--suave);
+/* Sala: tu imagen grande, los demás pequeños */
+.pagina-panelista.en-sala .credito { display: none; }
+.sala {
+  display: flex; flex-direction: column; gap: 10px;
+  height: calc(100vh - 58px); height: calc(100dvh - 58px);
+  padding: 10px;
 }
-.franja.aire { background: var(--marca); color: #fff; }
-.franja.alerta { background: rgba(242, 165, 22, .18); color: #f6cf7a; }
-
-.rejilla {
-  display: grid; gap: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  justify-content: center;
-  max-width: 1600px; margin: 0 auto 90px;
-}
+.sala-principal { flex: 1 1 auto; min-height: 0; position: relative; }
+.sala-principal .tile { position: absolute; inset: 0; aspect-ratio: auto; }
+.sala-principal .tile video { object-fit: contain; background: #05070a; }
+.sala-tira { flex: 0 0 auto; display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+.sala-tira:empty { display: none; }
+.sala-tira .tile { flex: 0 0 auto; width: 180px; cursor: pointer; }
 .tile {
   position: relative; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden;
   background: #11151b; border: 2px solid transparent;
@@ -186,6 +217,7 @@ input[type=color] { width: 44px; height: 34px; padding: 2px; border: 1px solid v
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   font-size: 44px; font-weight: 700; color: rgba(255, 255, 255, .7);
 }
+.sala-tira .tile .iniciales { font-size: 26px; }
 .tile.con-video .iniciales { display: none; }
 .tile .rotulo {
   position: absolute; left: 8px; bottom: 8px; max-width: calc(100% - 16px);
@@ -193,27 +225,35 @@ input[type=color] { width: 44px; height: 34px; padding: 2px; border: 1px solid v
   padding: 4px 9px; border-radius: 6px; background: rgba(0, 0, 0, .65);
   font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.sala-tira .tile .rotulo { left: 5px; bottom: 5px; padding: 2px 6px; font-size: 11.5px; }
 .tile .rotulo .ico { width: 14px; height: 14px; color: #ff6b6b; }
 .tile .marca-aire {
   position: absolute; right: 8px; top: 8px;
   padding: 3px 8px; border-radius: 5px; background: var(--marca); color: #fff;
   font-size: 11px; font-weight: 800; letter-spacing: .06em;
 }
+.sala-tira .tile .marca-aire { right: 5px; top: 5px; padding: 2px 5px; font-size: 9.5px; }
+.tile .volver {
+  position: absolute; right: 8px; bottom: 8px;
+  padding: 5px 10px; border-radius: 6px; background: rgba(0, 0, 0, .7); font-size: 12px; font-weight: 600;
+}
 
 .controles {
-  position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%);
-  display: flex; gap: 10px; padding: 10px;
+  flex: 0 0 auto; align-self: center;
+  display: flex; gap: 10px; padding: 8px;
   background: rgba(21, 26, 33, .95); border: 1px solid var(--borde); border-radius: 16px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, .45); z-index: 30;
 }
 .controles .btn { flex-direction: column; gap: 3px; min-width: 78px; padding: 8px 10px; font-size: 12px; }
 .controles .btn .ico { width: 22px; height: 22px; }
 .controles .btn.apagado { background: #3a1016; border-color: var(--marca); color: #ff8a8a; }
 
 @media (max-width: 760px) {
-  .lobby { grid-template-columns: 1fr; }
   .vista { padding: 12px; }
-  .controles { width: calc(100% - 20px); justify-content: space-around; bottom: 10px; }
+  .texto-estado { display: none; }
+  .barra.al-aire .texto-estado { display: inline; font-size: 12px; }
+  .barra.al-aire #nombreApp { display: none; }
+  .sala-tira .tile { width: 31vw; }
+  .controles { align-self: stretch; justify-content: space-around; }
   .controles .btn { min-width: 0; flex: 1; }
 }
 
@@ -308,3 +348,16 @@ details.seccion[open] > summary { margin-bottom: 12px; }
   .director { grid-template-columns: 1fr; }
   .director > .columna:last-child { grid-template-columns: 1fr; }
 }
+
+/* ---------- Panel del director: añadidos v2 ---------- */
+.mini i.p { background: transparent; border: 2px solid currentColor; opacity: 1; border-radius: 3px; }
+.sub-seccion { margin-top: 10px; border-top: 1px solid var(--borde); padding-top: 10px; }
+.sub-seccion > summary { cursor: pointer; font-weight: 600; color: var(--suave); font-size: 14px; }
+.sub-seccion[open] > summary { margin-bottom: 8px; }
+textarea { width: 100%; resize: vertical; line-height: 1.4; }
+.carta.mia { border-style: dashed; }
+.carta.mia.al-aire { border-style: solid; }
+.invitado-enlace { font-size: 12px; color: var(--suave); font-family: Consolas, "Courier New", monospace; margin: -4px 0 8px; word-break: break-all; }
+.btn.peligro.lleno { background: #3a1016; border-color: var(--marca); color: #ffb3b3; }
+.retorno .btn.al-aire { background: var(--marca); border-color: var(--marca); color: #fff; }
+.tile.yo .marca-aire { display: none; }

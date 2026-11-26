@@ -1,6 +1,8 @@
 /*
  * Sala Muchik - página de programa (fuente de navegador en OBS)
  * Entra a la sala como espectador invisible y dibuja lo que manda el director.
+ * Para no gastar la cuota gratis: solo se queda conectada si la producción abrió
+ * la sala, y se desconecta sola si se queda sin nadie o si se termina el evento.
  */
 (function () {
   'use strict';
@@ -23,7 +25,11 @@
   let estado = S.normalizarEstado(S.leerLocal(claveCache, null));
   let room = null;
   let reintento = null;
-  const audios = new Map(); // clave -> { pista, el }
+  let intentos = 0;
+  let salidaPropia = false;   // nos desconectamos nosotros (sala cerrada o vacía)
+  let terminado = false;      // la producción terminó el evento
+  let vigilancia = null;
+  const audios = new Map();   // clave -> { pista, el }
 
   function mostrarNota(texto) {
     nota.textContent = texto;
@@ -79,7 +85,6 @@
       const pista = pistaDeAudio(clave);
       if (pista) deseadas.set(clave, pista);
     });
-    // quitar las que ya no van
     audios.forEach(function (a, clave) {
       if (deseadas.get(clave) !== a.pista) {
         try { a.pista.detach(a.el); } catch (e) { /* nada */ }
@@ -87,7 +92,6 @@
         audios.delete(clave);
       }
     });
-    // agregar las nuevas
     deseadas.forEach(function (pista, clave) {
       if (audios.has(clave)) return;
       const el = pista.attach();
@@ -111,46 +115,105 @@
 
   /* ---------------- Conexión ---------------- */
 
+  function programarReintento(ms) {
+    clearTimeout(reintento);
+    if (terminado) return;
+    intentos++;
+    // cada 30 s los primeros 10 minutos, luego cada minuto
+    reintento = setTimeout(conectar, ms || (intentos <= 20 ? 30000 : 60000));
+  }
+
+  function salirNosotros() {
+    salidaPropia = true;
+    clearInterval(vigilancia);
+    if (room) room.disconnect();
+  }
+
+  function suscribirTodo() {
+    room.remoteParticipants.forEach(function (p) {
+      p.trackPublications.forEach(function (pub) { try { pub.setSubscribed(true); } catch (e) { /* nada */ } });
+    });
+  }
+
+  function vigilarSoledad() {
+    // Si nos quedamos solos (nadie más en la sala) por 2 minutos, salimos para no gastar
+    let solo = 0;
+    clearInterval(vigilancia);
+    vigilancia = setInterval(function () {
+      if (!room || room.state !== 'connected') return;
+      solo = room.remoteParticipants.size === 0 ? solo + 1 : 0;
+      if (solo >= 4) { salirNosotros(); programarReintento(); }
+    }, 30000);
+  }
+
   async function conectar() {
     clearTimeout(reintento);
     limpiarAudio();
-    room = new LK.Room(S.opcionesSala({ dynacast: false }));
+    salidaPropia = false;
+    const r = new LK.Room(S.opcionesSala({ dynacast: false }));
+    room = r;
     const E = LK.RoomEvent;
     [E.ParticipantConnected, E.ParticipantDisconnected, E.TrackSubscribed, E.TrackUnsubscribed,
       E.TrackMuted, E.TrackUnmuted, E.TrackPublished, E.TrackUnpublished,
       E.ParticipantAttributesChanged, E.ParticipantNameChanged, E.ParticipantMetadataChanged,
-      E.ActiveSpeakersChanged].forEach(function (ev) { room.on(ev, refrescar); });
+      E.ActiveSpeakersChanged].forEach(function (ev) { r.on(ev, refrescar); });
 
-    room.on(E.AudioPlaybackStatusChanged, function () {
-      botonAudio.classList.toggle('oculto', room.canPlaybackAudio);
+    r.on(E.TrackPublished, function (pub) { try { pub.setSubscribed(true); } catch (e) { /* nada */ } });
+    r.on(E.AudioPlaybackStatusChanged, function () {
+      botonAudio.classList.toggle('oculto', r.canPlaybackAudio);
     });
-    room.on(E.Reconnecting, function () { mostrarNota(''); });
-    room.on(E.Disconnected, function (motivo) {
+    r.on(E.DataReceived, function (carga, participante, tipo, tema) {
+      if (!participante || participante.identity !== S.ID_DIRECTOR || tema !== 'sala') return;
+      let m = null;
+      try { m = JSON.parse(new TextDecoder().decode(carga)); } catch (e) { return; }
+      if (m.accion === 'terminar') { terminado = true; salirNosotros(); }
+    });
+    r.on(E.Disconnected, function (motivo) {
+      if (room !== r) return;
+      clearInterval(vigilancia);
       limpiarAudio();
-      if (motivo === LK.DisconnectReason.CLIENT_INITIATED) return;
-      if (motivo === LK.DisconnectReason.DUPLICATE_IDENTITY) {
+      escenario.actualizar(estado, new Map());
+      if (salidaPropia || terminado) return;
+      const DR = LK.DisconnectReason;
+      if (motivo === DR.ROOM_DELETED || motivo === DR.ROOM_CLOSED || motivo === DR.PARTICIPANT_REMOVED) {
+        terminado = true; // la producción terminó el evento
+        return;
+      }
+      if (motivo === DR.DUPLICATE_IDENTITY) {
         mostrarNota('Este enlace de OBS se abrió en otro lugar. Usa una sola fuente de navegador con este enlace.');
         return;
       }
-      // reintentar sin borrar lo que se ve en pantalla
-      reintento = setTimeout(conectar, 5000);
+      if (motivo === DR.CLIENT_INITIATED) return;
+      programarReintento(5000); // se cortó: volver a intentar pronto
     });
 
     try {
-      await room.connect(S.CFG.livekitUrl, token, { autoSubscribe: true });
-      mostrarNota('');
-      botonAudio.classList.toggle('oculto', room.canPlaybackAudio);
-      refrescar();
+      await r.connect(S.CFG.livekitUrl, token, { autoSubscribe: false });
     } catch (err) {
       const msg = S.mensajeDeError(err);
       if (/pase/.test(msg)) {
         mostrarNota(msg + ' Genera un nuevo enlace para OBS en el panel del director.');
         return;
       }
-      reintento = setTimeout(conectar, 5000);
+      programarReintento();
+      return;
     }
+
+    // ¿La producción ya abrió la sala? Si no, salimos y probamos más tarde.
+    if (!r.remoteParticipants.has(S.ID_DIRECTOR)) {
+      salirNosotros();
+      programarReintento();
+      return;
+    }
+
+    intentos = 0;
+    mostrarNota('');
+    suscribirTodo();
+    vigilarSoledad();
+    botonAudio.classList.toggle('oculto', r.canPlaybackAudio);
+    refrescar();
   }
 
-  window.addEventListener('beforeunload', function () { if (room) room.disconnect(); });
+  window.addEventListener('beforeunload', function () { salirNosotros(); });
   conectar();
 })();
