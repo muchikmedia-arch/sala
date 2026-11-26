@@ -1,0 +1,5 @@
+Pon aquí tu logo con el nombre logo.png (mejor PNG sin fondo, unos 600 x 200 px).
+En el panel del director, en "Logo y colores", escribe:  img/logo.png
+
+También puedes poner una imagen de fondo (ej.: fondo.jpg, 1920 x 1080)
+y escribir img/fondo.jpg en "Imagen de fondo".

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Programa - Sala Muchik</title>
+  <link rel="stylesheet" href="css/escenario.css">
+  <style>
+    html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+    #lienzo { position: fixed; inset: 0; }
+    #nota {
+      position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+      max-width: 80%; padding: 18px 26px; border-radius: 10px;
+      background: rgba(0, 0, 0, .75); color: #fff; text-align: center;
+      font: 20px/1.4 "Segoe UI", Roboto, Arial, sans-serif; z-index: 100;
+    }
+    #nota.oculto, #activarAudio.oculto { display: none; }
+    #activarAudio {
+      position: fixed; right: 16px; bottom: 16px; z-index: 101;
+      padding: 12px 18px; border: 0; border-radius: 8px; cursor: pointer;
+      background: #e3001b; color: #fff; font: 600 16px "Segoe UI", Roboto, Arial, sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <div id="lienzo"></div>
+  <div id="nota" class="oculto"></div>
+  <button id="activarAudio" class="oculto" type="button">Activar audio</button>
+
+  <script src="lib/livekit-client.umd.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/comun.js"></script>
+  <script src="js/programa.js"></script>
+</body>
+</html>

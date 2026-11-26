@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#151a21">
+  <title>Sala Muchik</title>
+  <link rel="stylesheet" href="css/estilos.css">
+</head>
+<body>
+  <header class="barra">
+    <div class="marca-app"><span class="punto"></span><span id="nombreApp">Sala Muchik</span></div>
+    <span id="pillEstado" class="pill oculto"></span>
+  </header>
+
+  <main>
+    <!-- Error / enlace inválido -->
+    <section id="vistaError" class="vista oculto">
+      <div class="tarjeta centro">
+        <h1 id="tituloError">Enlace no válido</h1>
+        <p id="textoError" class="suave"></p>
+        <button id="btnReintentar" class="btn primario oculto" type="button">Volver a entrar</button>
+      </div>
+    </section>
+
+    <!-- Antesala: probar cámara y micrófono -->
+    <section id="vistaLobby" class="vista oculto">
+      <div class="lobby">
+        <div>
+          <div class="lobby-video">
+            <video id="previa" autoplay muted playsinline></video>
+            <div id="previaSin" class="previa-sin oculto">Cámara apagada</div>
+            <div class="medidor" title="Nivel del micrófono"><div id="nivel"></div></div>
+          </div>
+          <p class="suave" style="margin-top:10px;font-size:13px">Así te verán. Habla para comprobar que la barra verde se mueve.</p>
+        </div>
+
+        <div class="tarjeta">
+          <h1>Hola, <span id="saludo"></span></h1>
+          <p class="suave">Te invitaron a participar en <b id="nombreEvento"></b>. Revisa tu cámara y micrófono antes de entrar.</p>
+
+          <label>Tu nombre (así aparecerá en pantalla)
+            <input id="inNombre" maxlength="60" autocomplete="name">
+          </label>
+          <label>Cargo o institución
+            <input id="inCargo" maxlength="80">
+          </label>
+          <label>Cámara
+            <select id="selCam"></select>
+          </label>
+          <label>Micrófono
+            <select id="selMic"></select>
+          </label>
+
+          <div class="fila" style="margin-bottom:12px">
+            <button id="btnPreCam" class="btn" type="button"></button>
+            <button id="btnPreMic" class="btn" type="button"></button>
+          </div>
+
+          <p class="consejo"><span id="icoAudifonos"></span><span>Usa audífonos para evitar eco, busca un lugar con luz de frente y silencio. Si estás en celular, ponlo en horizontal.</span></p>
+
+          <button id="btnEntrar" class="btn primario grande" type="button">Entrar a la sala</button>
+          <p id="lobbyError" class="error" style="margin-top:10px"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Sala -->
+    <section id="vistaSala" class="vista oculto">
+      <div id="franja" class="franja">En espera: la producción te pondrá al aire cuando sea tu turno.</div>
+      <div id="rejilla" class="rejilla"></div>
+      <nav class="controles">
+        <button id="btnMic" class="btn" type="button"></button>
+        <button id="btnCam" class="btn" type="button"></button>
+        <button id="btnPantalla" class="btn" type="button"></button>
+        <button id="btnSalir" class="btn peligro" type="button"></button>
+      </nav>
+    </section>
+  </main>
+
+  <footer class="credito" id="credito"></footer>
+
+  <script src="lib/livekit-client.umd.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/comun.js"></script>
+  <script src="js/panelista.js"></script>
+</body>
+</html>

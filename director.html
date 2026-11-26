@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Panel del director - Sala Muchik</title>
+  <link rel="stylesheet" href="css/estilos.css">
+  <link rel="stylesheet" href="css/escenario.css">
+</head>
+<body>
+  <header class="barra">
+    <div class="marca-app"><span class="punto"></span><span id="nombreApp">Sala Muchik</span> <small>Panel del director</small></div>
+    <div class="fila" style="flex:0 0 auto">
+      <span id="pillConexion" class="pill">Desconectado</span>
+      <button id="btnConectar" class="btn primario" type="button">Conectar al panel</button>
+    </div>
+  </header>
+
+  <main class="director">
+    <!-- ================= Columna izquierda ================= -->
+    <div class="columna">
+
+      <details id="secClaves" class="seccion">
+        <summary><span id="icoLlave"></span>Claves del proyecto</summary>
+        <p class="ayuda">Están en LiveKit Cloud &gt; Settings &gt; API keys. Se guardan solo en este navegador; no uses este panel en computadoras públicas.</p>
+        <label>API Key <input id="inApiKey" type="text" autocomplete="off" spellcheck="false"></label>
+        <label>API Secret <input id="inApiSecret" type="password" autocomplete="off" spellcheck="false"></label>
+        <div class="fila">
+          <button id="btnGuardarClaves" class="btn primario" type="button">Guardar claves</button>
+          <button id="btnOlvidarClaves" class="btn peligro" type="button">Olvidar</button>
+        </div>
+        <p id="estadoClaves" class="ayuda" style="margin:10px 0 0"></p>
+      </details>
+
+      <section class="seccion">
+        <h2><span id="icoSala"></span>Sala del evento</h2>
+        <label>Nombre de la sala
+          <input id="inSala" type="text" maxlength="60" spellcheck="false">
+        </label>
+        <p class="ayuda">Usa un nombre por evento (ej.: debate-educacion). Si lo cambias, los enlaces anteriores dejan de servir.</p>
+        <p id="avisoArchivo" class="consejo oculto"></p>
+      </section>
+
+      <section class="seccion">
+        <h2><span id="icoInvitados"></span>Invitados</h2>
+        <label>Nombre <input id="inInvNombre" type="text" maxlength="60" placeholder="Ej.: Rosa Quispe"></label>
+        <label>Cargo o institución <input id="inInvCargo" type="text" maxlength="80" placeholder="Ej.: Directora UGEL Trujillo"></label>
+        <label>El enlace sirve por
+          <select id="selVigencia">
+            <option value="24">1 día</option>
+            <option value="72">3 días</option>
+            <option value="168" selected>7 días</option>
+            <option value="720">30 días</option>
+          </select>
+        </label>
+        <button id="btnCrearInvitado" class="btn primario" type="button" style="width:100%;margin-bottom:12px">Crear enlace de invitado</button>
+        <div id="listaInvitados"></div>
+      </section>
+
+      <section class="seccion">
+        <h2><span id="icoObs"></span>Enlace para OBS</h2>
+        <p class="ayuda">En OBS: Fuente &gt; Navegador, pega este enlace, ancho 1920, alto 1080 y marca "Controlar audio mediante OBS".</p>
+        <div class="campo-copiar">
+          <input id="inObs" type="text" readonly placeholder="Primero guarda las claves">
+          <button id="btnCopiarObs" class="btn" type="button" title="Copiar"></button>
+        </div>
+        <button id="btnGenerarObs" class="btn chico" type="button" style="margin-top:8px">Generar enlace nuevo</button>
+      </section>
+    </div>
+
+    <!-- ================= Columna central ================= -->
+    <div class="columna">
+      <section class="seccion">
+        <h2><span id="icoAire"></span>Programa <span class="suave" style="font-weight:500;font-size:13px">(lo que sale en OBS)</span></h2>
+        <div id="previa" class="vista-previa"><span class="etiqueta-previa">PROGRAMA</span></div>
+        <div class="disenos" id="disenos">
+          <button class="btn" data-diseno="auto" type="button"><span class="mini"><i style="left:3px;top:3px;width:21px;height:11px"></i><i style="left:28px;top:3px;width:21px;height:11px"></i><i style="left:15px;top:16px;width:21px;height:11px"></i></span>Automático</button>
+          <button class="btn" data-diseno="cuadricula" type="button"><span class="mini"><i style="left:3px;top:3px;width:21px;height:11px"></i><i style="left:28px;top:3px;width:21px;height:11px"></i><i style="left:3px;top:16px;width:21px;height:11px"></i><i style="left:28px;top:16px;width:21px;height:11px"></i></span>Cuadrícula</button>
+          <button class="btn" data-diseno="destacado" type="button"><span class="mini"><i style="left:3px;top:3px;width:33px;height:24px"></i><i style="left:39px;top:3px;width:11px;height:7px"></i><i style="left:39px;top:12px;width:11px;height:7px"></i></span>Destacado</button>
+          <button class="btn" data-diseno="solo" type="button"><span class="mini"><i style="left:3px;top:3px;width:47px;height:24px"></i></span>Solo uno</button>
+        </div>
+        <div class="fila" style="margin-top:10px">
+          <button id="btnTodosFuera" class="btn chico" type="button">Quitar a todos del aire</button>
+          <button id="btnLimpiarGraficos" class="btn chico" type="button">Ocultar cintillo y banner</button>
+        </div>
+      </section>
+
+      <section class="seccion">
+        <h2><span id="icoPersonas"></span>En la sala <span id="contador" class="suave" style="font-weight:500;font-size:13px"></span></h2>
+        <div id="participantes" class="participantes"></div>
+        <div id="sinParticipantes" class="vacio">Conéctate al panel y envía los enlaces a tus invitados. Aquí aparecerán cuando entren.</div>
+      </section>
+    </div>
+
+    <!-- ================= Columna derecha ================= -->
+    <div class="columna">
+      <section class="seccion">
+        <h2><span id="icoRetorno"></span>Retorno</h2>
+        <p class="ayuda">Para hablar con los panelistas fuera del aire. Lo que envíes aquí no sale en el programa.</p>
+        <div class="retorno">
+          <button id="btnHablar" class="btn" type="button"></button>
+          <button id="btnMiCam" class="btn" type="button"></button>
+          <button id="btnEscuchar" class="btn" type="button"></button>
+        </div>
+        <p class="ayuda" style="margin:10px 0 0">Usa audífonos: si los parlantes suenan cerca del micrófono de OBS habrá eco.</p>
+      </section>
+
+      <details class="seccion" open>
+        <summary><span id="icoCintillo"></span>Textos en pantalla</summary>
+        <label>Título del evento
+          <input id="inTitulo" type="text" maxlength="90" placeholder="Ej.: Conversatorio sobre educación rural">
+        </label>
+        <label class="check"><input id="chkTitulo" type="checkbox"> Mostrar título arriba</label>
+
+        <label style="margin-top:14px">Cintillo grande (abajo)
+          <input id="inCtTitulo" type="text" maxlength="60" placeholder="Nombre o tema">
+        </label>
+        <input id="inCtSub" type="text" maxlength="90" placeholder="Cargo o detalle" style="margin-bottom:8px">
+        <button id="btnCintillo" class="btn" type="button" style="width:100%;margin-bottom:14px"></button>
+
+        <label>Banner inferior
+          <input id="inBanner" type="text" maxlength="200" placeholder="Ej.: Escríbenos tus preguntas en los comentarios">
+        </label>
+        <label class="check"><input id="chkBanner" type="checkbox"> Mostrar banner</label>
+        <label class="check"><input id="chkDesplazar" type="checkbox"> Texto en movimiento</label>
+        <label class="check" style="margin-top:12px"><input id="chkNombres" type="checkbox"> Nombres dentro de cada recuadro</label>
+        <label class="check"><input id="chkResaltar" type="checkbox"> Resaltar a quien habla</label>
+      </details>
+
+      <details class="seccion">
+        <summary><span id="icoMarca"></span>Logo y colores</summary>
+        <label>Logo (dirección de la imagen)
+          <input id="inLogo" type="text" spellcheck="false" placeholder="img/logo.png">
+        </label>
+        <p class="ayuda">Sube tu logo a la carpeta img con el nombre logo.png y escribe img/logo.png, o pega la dirección de una imagen de internet. Mejor si es PNG sin fondo.</p>
+        <div class="colores">
+          <label>Color de marca <input id="colMarca" type="color"></label>
+          <label>Fondo <input id="colFondo" type="color"></label>
+        </div>
+        <label>Imagen de fondo (opcional)
+          <input id="inFondoImg" type="text" spellcheck="false" placeholder="img/fondo.jpg">
+        </label>
+        <label class="check"><input id="chkTransparente" type="checkbox"> Fondo transparente (usar el fondo de mi escena en OBS)</label>
+      </details>
+
+      <p class="credito" style="padding:0"><a href="https://cloud.livekit.io" target="_blank" rel="noopener">Ver consumo en LiveKit Cloud</a><br><span id="credito"></span></p>
+    </div>
+  </main>
+
+  <script src="lib/livekit-client.umd.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/comun.js"></script>
+  <script src="js/director.js"></script>
+</body>
+</html>

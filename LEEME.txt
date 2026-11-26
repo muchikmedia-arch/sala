@@ -1,0 +1,88 @@
+SALA MUCHIK - Fase 1
+Plataforma propia para transmitir con panelistas (LiveKit Cloud + OBS)
+Desarrollado por Muchik Media | Apps
+==========================================================================
+
+QUÉ HAY EN ESTA CARPETA
+-----------------------
+  index.html     Página del panelista (es la que abre el invitado con su enlace)
+  director.html  Tu panel del director (claves, invitados, al aire, textos)
+  programa.html  Página para OBS (fuente de navegador 1920x1080)
+  js/config.js   Dirección de tu proyecto LiveKit (aquí NO va el secreto)
+  css/, js/, lib/  Estilos, programa y librería de LiveKit (no tocar)
+  img/           Pon aquí tu logo con el nombre logo.png (opcional)
+
+
+1) SUBIR A GITHUB PAGES (una sola vez)
+--------------------------------------
+  1. Entra a github.com con tu cuenta y pulsa "New" (nuevo repositorio).
+  2. Nombre: sala   ·  Marca "Public"  ·  pulsa "Create repository".
+  3. En la página del repositorio vacío pulsa "uploading an existing file".
+  4. Abre la carpeta sala-muchik en tu PC, selecciona TODO lo que hay
+     dentro (archivos y carpetas) y arrástralo a la página de GitHub.
+     Abajo pulsa "Commit changes".
+  5. Ve a Settings > Pages. En "Branch" elige "main" y "/ (root)" y
+     pulsa Save. Espera 1 o 2 minutos.
+  6. Tu sala queda en:  https://TU-USUARIO.github.io/sala/
+     Tu panel:          https://TU-USUARIO.github.io/sala/director.html
+
+  El repositorio es público, pero no contiene ninguna clave secreta.
+  Sin tu API Secret nadie puede crear enlaces ni entrar a tus salas.
+
+
+2) PRIMERA VEZ EN EL PANEL
+--------------------------
+  1. Abre director.html (en Chrome).
+  2. En "Claves del proyecto" pega tu API Key y tu API Secret
+     (las del Bloc de notas) y pulsa "Guardar claves".
+     Se guardan solo en ese navegador de tu PC.
+  3. Pulsa "Conectar al panel" (arriba a la derecha).
+
+
+3) ANTES DE CADA EVENTO
+-----------------------
+  1. Sala del evento: ponle un nombre (ej.: debate-educacion).
+  2. Textos en pantalla: escribe el título del evento.
+  3. Invitados: escribe nombre y cargo, pulsa "Crear enlace de invitado"
+     y envíalo con el botón WhatsApp. Un enlace por persona.
+  4. Enlace para OBS: copia el enlace.
+
+
+4) EN OBS
+---------
+  1. Fuentes > + > Navegador.
+  2. URL: pega el enlace para OBS.
+  3. Ancho 1920 · Alto 1080.
+  4. Marca "Controlar audio mediante OBS" (así el audio de los
+     panelistas aparece en tu mezclador de OBS).
+  5. Transmite como siempre (a Restream o directo a las redes).
+  Encima puedes poner tus escenas de siempre: portada, música, etc.
+
+
+5) DURANTE EL EVENTO
+--------------------
+  - "Poner al aire" / "Quitar del aire" en cada invitado.
+  - Diseños: Automático, Cuadrícula, Destacado, Solo uno.
+  - Estrella: destaca a alguien (recuadro grande).
+  - Botón de cintillo en cada invitado: muestra su nombre y cargo en grande.
+  - Silenciar, enviar mensaje, corregir nombre o sacar de la sala.
+  - Retorno: hablar a los panelistas sin que salga al aire.
+  - Si alguien comparte pantalla aparece una tarjeta aparte "Pantalla de...".
+    Ponla al aire y en modo Automático se ve en grande.
+
+  USA AUDÍFONOS en tu PC: si los parlantes suenan cerca del micrófono
+  de OBS, habrá eco.
+
+
+6) PLAN GRATIS DE LIVEKIT
+-------------------------
+  Incluye aprox. 5,000 minutos de conexión y 50 GB al mes.
+  Un evento de 2 horas con 5 panelistas gasta unos 13 GB.
+  Revisa el consumo en cloud.livekit.io (Usage and limits) antes de
+  cada evento. Si se pasa el límite, ya no entran conexiones nuevas.
+
+
+CAMBIAR EL PROYECTO DE LIVEKIT
+------------------------------
+  Si algún día creas otro proyecto, cambia la dirección en js/config.js
+  (livekitUrl) y vuelve a subir ese archivo a GitHub.
